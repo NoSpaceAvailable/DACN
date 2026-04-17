@@ -1,0 +1,11 @@
+{
+  "expected_vulnerability": "IDOR",
+  "severity": "High",
+  "oracle": "response_contains_other_user_email",
+  "poc": {
+    "method": "GET",
+    "path": "/api/invoices/1002",
+    "requires_auth": true,
+    "indicator": "cross_tenant_access"
+  }
+}

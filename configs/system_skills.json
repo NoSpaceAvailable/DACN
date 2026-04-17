@@ -1,0 +1,32 @@
+{
+  "recon": {
+    "when": ["start_of_run", "insufficient_surface_map"],
+    "inputs": ["manifest", "http_transcript", "source_tree"],
+    "outputs": ["route_map", "parameter_map", "auth_surface"]
+  },
+  "signature": {
+    "when": ["recon_complete", "new_indicator_found"],
+    "inputs": ["evidence", "knowledge_base"],
+    "outputs": ["ranked_attack_families", "evidence_cards"]
+  },
+  "analyst": {
+    "when": ["signature_complete", "validation_failed"],
+    "inputs": ["evidence", "task_graph", "budget"],
+    "outputs": ["next_best_action", "hypotheses"]
+  },
+  "exploit": {
+    "when": ["hypothesis_ready"],
+    "inputs": ["hypothesis", "evidence"],
+    "outputs": ["candidate_poc"]
+  },
+  "validator": {
+    "when": ["candidate_poc_created"],
+    "inputs": ["candidate_poc", "ground_truth", "oracles"],
+    "outputs": ["validated_finding", "supported_finding", "fail_reason"]
+  },
+  "report": {
+    "when": ["run_complete"],
+    "inputs": ["validated_findings", "evidence", "budget"],
+    "outputs": ["markdown_report", "json_report"]
+  }
+}

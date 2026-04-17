@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vapt-orchestrator-safe"
+version = "0.1.0"
+description = "Defensive research scaffold for multi-agent web security orchestration in a local lab"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  {name = "OpenAI assistant scaffold"}
+]
+license = {text = "MIT"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+dependencies = []
+
+[project.scripts]
+vapt-safe = "vapt_orchestrator_safe.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

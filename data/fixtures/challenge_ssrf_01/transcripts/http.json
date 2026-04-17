@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/api/webhook/preview", "notes": "accepts JSON body with url field"}
+  ],
+  "observations": [
+    "POST /api/webhook/preview with a public URL returns fetched content summary.",
+    "The server response mentions fetched bytes and title tags.",
+    "No denylist or allowlist appears in behavior notes."
+  ]
+}

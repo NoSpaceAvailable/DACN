@@ -1,0 +1,11 @@
+{
+  "expected_vulnerability": "SQLi",
+  "severity": "Critical",
+  "oracle": "auth_bypass_or_query_tampering",
+  "poc": {
+    "method": "POST",
+    "path": "/login",
+    "body_fields": ["username", "password"],
+    "indicator": "unsafe_sql_string_construction"
+  }
+}

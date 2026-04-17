@@ -1,0 +1,75 @@
+{
+  "profiles": {
+    "gamma4_4b": {
+      "label": "Gamma4 4B",
+      "reasoning": 0.46,
+      "analysis": 0.44,
+      "coding": 0.42,
+      "reporting": 0.56,
+      "recon": 0.50,
+      "validation": 0.48,
+      "cost_per_step": 0.001,
+      "simulated_tokens_per_step": 500
+    },
+    "gamma4_8b": {
+      "label": "Gamma4 8B",
+      "reasoning": 0.62,
+      "analysis": 0.60,
+      "coding": 0.58,
+      "reporting": 0.63,
+      "recon": 0.60,
+      "validation": 0.61,
+      "cost_per_step": 0.002,
+      "simulated_tokens_per_step": 900
+    },
+    "gamma4_27b": {
+      "label": "Gamma4 27B",
+      "reasoning": 0.84,
+      "analysis": 0.82,
+      "coding": 0.80,
+      "reporting": 0.76,
+      "recon": 0.74,
+      "validation": 0.83,
+      "cost_per_step": 0.006,
+      "simulated_tokens_per_step": 2200
+    }
+  },
+  "profile_sets": {
+    "all_4b": {
+      "coordinator": "gamma4_4b",
+      "recon": "gamma4_4b",
+      "signature": "gamma4_4b",
+      "analyst": "gamma4_4b",
+      "exploit": "gamma4_4b",
+      "validator": "gamma4_4b",
+      "report": "gamma4_4b"
+    },
+    "all_8b": {
+      "coordinator": "gamma4_8b",
+      "recon": "gamma4_8b",
+      "signature": "gamma4_8b",
+      "analyst": "gamma4_8b",
+      "exploit": "gamma4_8b",
+      "validator": "gamma4_8b",
+      "report": "gamma4_8b"
+    },
+    "all_27b": {
+      "coordinator": "gamma4_27b",
+      "recon": "gamma4_27b",
+      "signature": "gamma4_27b",
+      "analyst": "gamma4_27b",
+      "exploit": "gamma4_27b",
+      "validator": "gamma4_27b",
+      "report": "gamma4_27b"
+    },
+    "mixed_default": {
+      "coordinator": "gamma4_8b",
+      "recon": "gamma4_4b",
+      "signature": "gamma4_4b",
+      "analyst": "gamma4_8b",
+      "exploit": "gamma4_27b",
+      "validator": "gamma4_8b",
+      "report": "gamma4_4b"
+    }
+  }
+}
