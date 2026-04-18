@@ -49,3 +49,7 @@ OLLAMA_TOKEN=<your token>
 - **No TLS** — bearer token sent over plaintext HTTP. Acceptable for DACN dev (low-stakes, no PII), not for production.
 - **Single token** — no per-user audit; rotate by re-running script with new `OLLAMA_TOKEN`.
 - **No rate limiting** beyond Caddy default — add `rate_limit` directive if abuse appears in logs.
+- **CPU inference is slow.** A single recon-style prompt (~2 KB input, ~500 token output) takes 3-10 minutes on `gemma4:e2b` / 4 vCPU. The Caddy timeouts are set to 600s; bump client-side `OLLAMA_TIMEOUT=600` to match. If the model still times out, either shorten the prompt or shift to a smaller model.
+
+### Re-running after the script
+The script is idempotent — re-run it to apply config changes (e.g. updated timeouts). Existing token will be overwritten; pass the same `OLLAMA_TOKEN` to keep client config working.

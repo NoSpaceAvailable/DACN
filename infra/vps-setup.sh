@@ -72,7 +72,16 @@ cat > "${CADDYFILE_PATH}" <<EOF
     @auth header Authorization "Bearer ${OLLAMA_TOKEN}"
 
     handle @auth {
-        reverse_proxy 127.0.0.1:11434
+        reverse_proxy 127.0.0.1:11434 {
+            # CPU inference for 5B-8B is slow (~3 tok/s). Bump timeouts so
+            # Caddy doesn't 502 on long generates. Match these with the
+            # client-side OLLAMA_TIMEOUT env var (default 180s, recommend 600s).
+            transport http {
+                dial_timeout       10s
+                response_header_timeout 600s
+                read_timeout       600s
+            }
+        }
     }
 
     handle {

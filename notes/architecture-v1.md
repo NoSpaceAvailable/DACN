@@ -1,7 +1,11 @@
-# DACN architecture v1 (proposal, draft 2026-04-18)
+# DACN architecture v1 (proposal, draft 2026-04-18) — ⚠️ OBSOLETE
 
-**Status:** DRAFT — chờ thầy duyệt và chốt scope.
-**Positioning:** Extension của Red-MIRROR (lab UIT InSec), focus vào **pentest output quality** trước (theo priority user).
+> **Superseded by `architecture-v2.md`** (2026-04-18 cùng ngày, sau buổi họp với thầy Khoa).
+>
+> v1 framing là "extend Red-MIRROR với 4 specialized component (B-Tools / FA-RAG / DO-Val / SW-Mem)" — **vẫn còn dùng được** ở mức ý tưởng (3/4 component map vào v2 layer), nhưng top-level structure đã đổi sang **4-layer + Dispatcher-as-LLM-agent** theo chỉ đạo trực tiếp của thầy. Đọc v2 trước, v1 chỉ để tham khảo lịch sử.
+
+**Status (gốc):** DRAFT — chờ thầy duyệt và chốt scope.
+**Positioning (gốc):** Extension của Red-MIRROR (lab UIT InSec), focus vào **pentest output quality** trước (theo priority user).
 
 ---
 

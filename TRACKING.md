@@ -8,16 +8,20 @@
 
 ## Status overview
 
-| Phase | Mô tả | Trạng thái |
+| Sprint | Mô tả | Trạng thái |
 |---|---|---|
-| **0** | Research & paper critique | 🟢 done — **chờ thầy duyệt arch v1** |
-| **1** | Wire Ollama VPS + LLM-driven agents | 🟡 Sprint 1 đang plan (xem `notes/sprint-01.md`) |
-| **2** | Per-job Docker sandbox + tool registry | ⚪ pending |
-| **3** | FA-RAG (LlamaIndex framework-aware) | ⚪ pending |
-| **4** | SW-Mem (salience-weighted memory) | ⚪ pending — *có thể drop nếu thiếu thời gian* |
-| **5** | B-Tools (blind/crypto tool suite) | ⚪ pending |
-| **6** | DO-Val (dual-oracle validator) | ⚪ pending — *có thể drop nếu thiếu thời gian* |
-| **7** | Full eval matrix + thesis writeup | ⚪ pending |
+| **0** | Research & paper critique (6 paper, critique, arch v1) | 🟢 done |
+| **1** | Ollama integration (D1 VPS / D2 adapter / D3 LLM-recon) | 🟢 done — 36 tests pass, end-to-end qua gemma4 |
+| **— ARCHITECTURE PIVOT 2026-04-18 (sau họp thầy) —** | 4-layer + Dispatcher-as-LLM-agent + LangChain abstraction. Xem `notes/architecture-v2.md`. | |
+| **2** | LangChain foundation: BaseAgent / BaseTool / Blackboard refactor + backend factory (ollama/openai/anthropic/openrouter) | ⚪ pending |
+| **3** | Dispatcher (LangGraph supervisor, Claude-CLI style) replaces linear orchestrator | ⚪ pending |
+| **4** | Tool layer + per-job Docker sandbox (Nmap/Curl/Sqlmap/Python tools) | ⚪ pending |
+| **5** | RAG + Knowledge Graph (LlamaIndex KB + networkx KG, query_kg/query_rag tools) | ⚪ pending |
+| **6** | C1 mid-thinking intervention + C2 anti-loop guard (NOVEL contributions) | ⚪ pending |
+| **7** | Specialised tools (blind timing sampler, Z3, hashcat) | ⚪ pending |
+| **8** | Dataset distillation (~5k CVE+writeup token-efficient entries) | ⚪ pending |
+| **9** | Eval matrix vs gpt-5-mini / claude-sonnet (target ≥80%) | ⚪ pending |
+| **10** | Thesis writeup | ⚪ pending |
 
 Legend: 🟢 done · 🟡 in progress · 🔴 blocked · ⚪ pending
 
@@ -143,6 +147,26 @@ Sketch:
 ---
 
 ## Session log
+
+### 2026-04-18 (sau họp thầy — ARCHITECTURE PIVOT)
+
+- Họp thầy Khoa, nhận 9 directive + 4-layer diagram. Insight quan trọng: "1 agent điều khiển tất cả như Claude CLI" — Dispatcher là LLM-driven supervisor, không phải state machine.
+- Architecture v1 (extend Red-MIRROR với 4 specialized component) → **OBSOLETE**.
+- Architecture v2 published tại `notes/architecture-v2.md`:
+  - 4 layer: Orchestration (Dispatcher / Blackboard / Model Selector) — Agent (Recon/Analyst/Exploit/Report) — Tool (security tools + Docker sandbox) — RAG (KB + vector store + **Knowledge Graph**)
+  - LangChain backend abstraction: ollama / openai / anthropic / openrouter swap free
+  - 2 novel contribution: **C1 mid-thinking intervention** (streaming watchdog: drift / scope / loop), **C2 anti-loop guard** (signature buffer + forced pivot)
+  - 1 token-efficiency lever: **C3 Knowledge Graph RAG** (entity-relation extraction → networkx, query_kg vs query_rag)
+  - Benchmark target: ≥80% vs gpt-5-mini & claude-sonnet
+- D2-D3 code 100% reusable trong v2 (chỉ refactor wrap LangChain, không throwaway).
+
+### 2026-04-18 (chiều — Sprint 1 D3 done)
+
+- D3 done: prompts/recon.md + utils/llm_json.py + agents/recon.py LLM-driven với heuristic fallback. OllamaModel.generate() thêm `think` flag.
+- 36/36 test pass (18 cũ + 18 D3 mới: 11 llm_json, 5 recon, 3 think, etc.).
+- Live test trên VPS: gemma4:e2b CPU = ~3 tok/s; recon prompt cần 3-10 phút → vượt timeout (180s, sau lên 600s vẫn 502 từ Caddy). Fallback safety net work đúng — pipeline vẫn hoàn thành.
+- Update `infra/vps-setup.sh` với Caddy timeout 600s.
+- Viết `reports/progress-report-02.md` — báo cáo chi tiết Phase 0 + Sprint 1 D1-D3 cho thầy.
 
 ### 2026-04-18 (cuối ngày — Sprint 1 D1+D2 done)
 

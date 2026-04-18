@@ -78,7 +78,16 @@ class OllamaModel(BaseModel):
         prompt: str,
         system: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
+        think: Optional[bool] = None,
     ) -> OllamaResponse:
+        """Single-turn generate.
+
+        ``think``: for thinking-capable models (gemma3-thinking, gemma4,
+        qwen3-thinking, etc.), pass ``False`` to suppress chain-of-thought
+        tokens for faster structured output. Pass ``True`` to force them on.
+        Pass ``None`` (default) to let the model decide. Models that don't
+        understand the field will silently ignore it.
+        """
         url = f"{self.base_url}/api/generate"
         payload: Dict[str, Any] = {
             "model": self.model_name,
@@ -89,6 +98,8 @@ class OllamaModel(BaseModel):
             payload["system"] = system
         if options:
             payload["options"] = options
+        if think is not None:
+            payload["think"] = think
         return self._post(url, payload)
 
     def chat(
