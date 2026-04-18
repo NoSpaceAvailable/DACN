@@ -1,0 +1,46 @@
+# Neo4j for the DACN Knowledge Graph layer.
+#
+# Sprint 2: only ships the compose file + init schema.
+# Sprint 5: Python rag/kg_client.py uses the bolt endpoint to MERGE/MATCH triples.
+#
+# Usage:
+#   cd infra/neo4j
+#   echo "NEO4J_PASSWORD=$(openssl rand -hex 16)" > .env       # or set in shell
+#   docker compose up -d
+#   # Apply schema once (or after a fresh volume):
+#   docker exec -i dacn-neo4j cypher-shell -u neo4j -p "$NEO4J_PASSWORD" < init/001_schema.cypher
+#
+# Connection from Python (Sprint 5):
+#   bolt://127.0.0.1:7687  user=neo4j  password=$NEO4J_PASSWORD
+# Browser UI:
+#   http://127.0.0.1:7474
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: dacn-neo4j
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7474:7474"   # HTTP (Browser)
+      - "127.0.0.1:7687:7687"   # Bolt (driver)
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}"
+      # Cap heap so the container plays nicely with the dev VPS / laptop.
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "1g"
+      NEO4J_server_memory_pagecache_size: "256m"
+      # Disable telemetry / strict file permissions for dev convenience.
+      NEO4J_server_config_strict__validation_enabled: "false"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - ./init:/init:ro          # init scripts mounted for manual `cypher-shell` runs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$NEO4J_PASSWORD\" 'RETURN 1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+
+volumes:
+  neo4j_data:
+  neo4j_logs:

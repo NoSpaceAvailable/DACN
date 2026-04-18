@@ -1,1 +1,12 @@
 requests>=2.31
+
+# LangChain backend abstraction (Sprint 2)
+langchain>=0.3
+langchain-core>=0.3
+langchain-ollama>=0.2
+langchain-openai>=0.2     # also handles openrouter via base_url override
+langchain-anthropic>=0.2
+pydantic>=2.7
+
+# Neo4j driver for Knowledge Graph (Sprint 5 wires this in; Sprint 2 just sets up the DB)
+neo4j>=5.20

@@ -13,7 +13,7 @@
 | **0** | Research & paper critique (6 paper, critique, arch v1) | 🟢 done |
 | **1** | Ollama integration (D1 VPS / D2 adapter / D3 LLM-recon) | 🟢 done — 36 tests pass, end-to-end qua gemma4 |
 | **— ARCHITECTURE PIVOT 2026-04-18 (sau họp thầy) —** | 4-layer + Dispatcher-as-LLM-agent + LangChain abstraction. Xem `notes/architecture-v2.md`. | |
-| **2** | LangChain foundation: BaseAgent / BaseTool / Blackboard refactor + backend factory (ollama/openai/anthropic/openrouter) | ⚪ pending |
+| **2** | LangChain foundation: BaseAgent / BaseTool / Blackboard refactor + backend factory (ollama/openai/anthropic/openrouter) | 🟢 done — 91/91 tests pass, Neo4j compose ready |
 | **3** | Dispatcher (LangGraph supervisor, Claude-CLI style) replaces linear orchestrator | ⚪ pending |
 | **4** | Tool layer + per-job Docker sandbox (Nmap/Curl/Sqlmap/Python tools) | ⚪ pending |
 | **5** | RAG + Knowledge Graph (LlamaIndex KB + networkx KG, query_kg/query_rag tools) | ⚪ pending |
@@ -147,6 +147,19 @@ Sketch:
 ---
 
 ## Session log
+
+### 2026-04-18 (Sprint 2 done — LangChain foundation)
+
+- 5 wrapper mới (production-grade, tất cả test mock-based, không gọi API thật):
+  - `llm/backend_factory.py` — `parse_spec` / `resolve_spec` / `build_chat_model` / `build_for_role`. Hỗ trợ `ollama|openai|anthropic|openrouter|custom`. Per-role override: `LLM_BACKEND_<ROLE>` → `LLM_BACKEND_DEFAULT` → built-in default `ollama:gemma4:e2b`.
+  - `tools/base.py` — `BaseTool` (subclass LangChain `BaseTool`) + `ToolResult` dataclass. Auto-truncation, exception-to-ToolResult envelope, Blackboard artifact write, loop-signature push (chuẩn bị cho C2 anti-loop ở Sprint 6). `EchoTool` ship làm reference + test fixture.
+  - `memory/shared_memory.py` — refactor `SharedMemory` → `Blackboard` (alias giữ backward compat). Thêm `RLock`, `phase_context`, `kg_handle`, `loop_signatures` (deque maxlen=32). Snapshot loại trừ `kg_handle` để JSON serialise không vỡ.
+  - `agents/base.py` — thêm `LangChainAgent` + `LangChainAgentSpec` cohabit với `BaseAgent` Sprint 1. Tự bind tools, inject blackboard vào tools, load system prompt từ `prompts/<role>.md`.
+  - `infra/neo4j/{docker-compose.yml, init/001_schema.cypher, README.md}` — Neo4j 5-community trong Docker, bind `127.0.0.1` only, schema constraints cho CVE/Endpoint/Framework/Sink/Source/Parameter/Payload/CWE.
+- 55 test mới (mock-based, không cần network): backend_factory (22), blackboard (10), base_tool (13), langchain_agent (10).
+- Tổng test: **91/91 pass** (36 Sprint 1 + 55 Sprint 2).
+- Dependencies thêm: `langchain==1.2.x`, `langchain-core==1.3.x`, `langchain-ollama`, `langchain-openai`, `langchain-anthropic`, `pydantic>=2.7`, `neo4j>=5.20`.
+- Existing code 100% giữ nguyên — Sprint 1 tests vẫn pass nhờ alias `SharedMemory = Blackboard`.
 
 ### 2026-04-18 (sau họp thầy — ARCHITECTURE PIVOT)
 
