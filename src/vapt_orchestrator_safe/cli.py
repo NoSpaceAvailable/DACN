@@ -4,12 +4,44 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from vapt_orchestrator_safe.config import DEFAULT_FIXTURES, DEFAULT_OUTPUTS, DEFAULT_PROFILES, load_profiles
+from vapt_orchestrator_safe.config import (
+    DEFAULT_FIXTURES,
+    DEFAULT_OUTPUTS,
+    DEFAULT_PROFILES,
+    get_ollama_env,
+    load_profiles,
+)
 from vapt_orchestrator_safe.engine.benchmark import BenchmarkRunner
 from vapt_orchestrator_safe.engine.orchestrator import Orchestrator
+from vapt_orchestrator_safe.llm.registry import OllamaConfig, parse_backend
 from vapt_orchestrator_safe.utils.io import ensure_dir
 
 
+# ── helpers ──────────────────────────────────────────────────────────────────
+def _resolve_ollama_config(backend: str) -> OllamaConfig | None:
+    """Build an OllamaConfig from env, or return None for non-ollama backends.
+
+    Raises with a clear message if backend=ollama:* but env is incomplete.
+    """
+    kind, _ = parse_backend(backend)
+    if kind != "ollama":
+        return None
+    env = get_ollama_env()
+    base_url = env["base_url"]
+    if not base_url:
+        raise SystemExit(
+            "OLLAMA_BASE_URL is not set. Add it to .env.local or your shell, e.g.:\n"
+            "  export OLLAMA_BASE_URL=http://157.245.195.74"
+        )
+    timeout_raw = env.get("timeout") or "180"
+    try:
+        timeout = int(timeout_raw)
+    except ValueError:
+        raise SystemExit(f"OLLAMA_TIMEOUT must be an integer, got: {timeout_raw!r}")
+    return OllamaConfig(base_url=base_url, token=env.get("token"), timeout=timeout)
+
+
+# ── subcommand handlers ──────────────────────────────────────────────────────
 def cmd_profiles(args: argparse.Namespace) -> int:
     loaded = load_profiles(Path(args.profiles))
     print("Profiles:")
@@ -25,14 +57,18 @@ def cmd_profiles(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     fixture = Path(args.fixture)
+    ollama_config = _resolve_ollama_config(args.llm)
     orchestrator = Orchestrator(
         profile_set_name=args.profile_set,
         profiles_path=Path(args.profiles),
         outputs_root=Path(args.outputs_root),
+        backend=args.llm,
+        ollama_config=ollama_config,
     )
     summary = orchestrator.run_fixture(fixture)
     print(f"Run complete: {summary['status']}")
-    print(f"Output dir: {summary['output_dir']}")
+    print(f"Backend:      {summary.get('backend', '?')}")
+    print(f"Output dir:   {summary['output_dir']}")
     print(f"Validated findings: {len(summary.get('validated_findings', []))}")
     return 0
 
@@ -52,12 +88,15 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     outputs_root = ensure_dir(Path(args.outputs_root))
     fixtures_dir = Path(args.fixtures_dir)
     fixtures = _collect_fixtures(fixtures_dir)
+    ollama_config = _resolve_ollama_config(args.llm)
 
     def factory(profile_set_name: str) -> Orchestrator:
         return Orchestrator(
             profile_set_name=profile_set_name,
             profiles_path=profiles_path,
             outputs_root=outputs_root,
+            backend=args.llm,
+            ollama_config=ollama_config,
         )
 
     runner = BenchmarkRunner(factory)
@@ -71,6 +110,72 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_llm_test(args: argparse.Namespace) -> int:
+    """Probe the configured Ollama backend without running a full pipeline.
+
+    Useful as a smoke test after running infra/vps-setup.sh.
+    """
+    from vapt_orchestrator_safe.llm.ollama_model import OllamaError, OllamaModel
+    from vapt_orchestrator_safe.types import ModelProfile
+
+    ollama_config = _resolve_ollama_config(args.llm)
+    if ollama_config is None:
+        raise SystemExit("llm-test only supports the ollama:* backend (got: %s)" % args.llm)
+    _, model_tag = parse_backend(args.llm)
+    if not model_tag:
+        raise SystemExit("Backend must be ollama:<model_tag> (e.g. ollama:gemma4:e2b)")
+
+    # Throwaway profile — only the label is read back in summarize().
+    dummy_profile = ModelProfile(
+        name="probe", label="probe",
+        reasoning=0.0, analysis=0.0, coding=0.0, reporting=0.0, recon=0.0, validation=0.0,
+        cost_per_step=0.0, simulated_tokens_per_step=0,
+    )
+    model = OllamaModel(
+        profile=dummy_profile,
+        base_url=ollama_config.base_url,
+        model_name=model_tag,
+        token=ollama_config.token,
+        timeout=ollama_config.timeout,
+    )
+
+    print(f"-> {ollama_config.base_url}  (model={model_tag}, timeout={ollama_config.timeout}s)")
+    try:
+        tags = model.list_tags()
+    except OllamaError as exc:
+        print(f"FAIL list_tags: {exc}")
+        return 2
+    print(f"  /api/tags OK — {len(tags)} model(s) available: {', '.join(tags) or '(none)'}")
+    if model_tag not in tags:
+        print(f"  WARN: '{model_tag}' is not in the server's model list; pull it on the VPS first.")
+
+    prompt = args.prompt or "Reply with the single word OK."
+    try:
+        result = model.generate(prompt, options={"temperature": 0.0})
+    except OllamaError as exc:
+        print(f"FAIL generate: {exc}")
+        return 3
+    print(
+        f"  /api/generate OK — prompt_tokens={result.prompt_tokens}, "
+        f"completion_tokens={result.completion_tokens}, "
+        f"duration_ms={result.total_duration_ns // 1_000_000}"
+    )
+    print("  -- response --")
+    print(result.text.strip()[:1000])
+    return 0
+
+
+# ── parser ───────────────────────────────────────────────────────────────────
+def _add_llm_arg(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--llm",
+        default="rule",
+        help="LLM backend: 'rule' (default offline) or 'ollama:<model_tag>' "
+             "(e.g. ollama:gemma4:e2b). Reads OLLAMA_BASE_URL/OLLAMA_TOKEN/OLLAMA_TIMEOUT "
+             "from env or .env.local.",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="VAPT Orchestrator Safe Lab CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -80,6 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--profile-set", default="mixed_default", help="Profile set name")
     run_parser.add_argument("--profiles", default=str(DEFAULT_PROFILES), help="Path to profile config JSON")
     run_parser.add_argument("--outputs-root", default=str(DEFAULT_OUTPUTS), help="Directory for run outputs")
+    _add_llm_arg(run_parser)
     run_parser.set_defaults(func=cmd_run)
 
     bench_parser = sub.add_parser("benchmark", help="Run benchmark across all fixtures")
@@ -88,11 +194,21 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--profile-sets", default="", help="Comma-separated subset of profile set names")
     bench_parser.add_argument("--outputs-root", default=str(DEFAULT_OUTPUTS), help="Directory for run outputs")
     bench_parser.add_argument("--out", required=True, help="Path to benchmark JSON output")
+    _add_llm_arg(bench_parser)
     bench_parser.set_defaults(func=cmd_benchmark)
 
     profiles_parser = sub.add_parser("profiles", help="List available profiles and profile sets")
     profiles_parser.add_argument("--profiles", default=str(DEFAULT_PROFILES), help="Path to profile config JSON")
     profiles_parser.set_defaults(func=cmd_profiles)
+
+    llm_test_parser = sub.add_parser(
+        "llm-test", help="Probe the configured Ollama backend (list tags + 1 generate call)"
+    )
+    _add_llm_arg(llm_test_parser)
+    llm_test_parser.add_argument(
+        "--prompt", default=None, help="Prompt to send (default: 'Reply with the single word OK.')"
+    )
+    llm_test_parser.set_defaults(func=cmd_llm_test)
 
     return parser
 

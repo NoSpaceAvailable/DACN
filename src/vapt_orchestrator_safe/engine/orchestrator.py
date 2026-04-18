@@ -15,7 +15,7 @@ from vapt_orchestrator_safe.agents.validator import ValidatorAgent
 from vapt_orchestrator_safe.config import DEFAULT_KB, DEFAULT_OUTPUTS, ROOT, load_profiles
 from vapt_orchestrator_safe.engine.budget import BudgetTracker
 from vapt_orchestrator_safe.engine.router import ModelRouter
-from vapt_orchestrator_safe.llm.registry import ModelRegistry
+from vapt_orchestrator_safe.llm.registry import ModelRegistry, OllamaConfig
 from vapt_orchestrator_safe.memory.rag import CompressedRAG
 from vapt_orchestrator_safe.memory.shared_memory import SharedMemory
 from vapt_orchestrator_safe.sandbox.local_lab import LocalLabAdapter
@@ -24,7 +24,14 @@ from vapt_orchestrator_safe.utils.io import ensure_dir, write_json
 
 
 class Orchestrator:
-    def __init__(self, profile_set_name: str, profiles_path: Path | None = None, outputs_root: Path | None = None):
+    def __init__(
+        self,
+        profile_set_name: str,
+        profiles_path: Path | None = None,
+        outputs_root: Path | None = None,
+        backend: str = "rule",
+        ollama_config: OllamaConfig | None = None,
+    ):
         loaded = load_profiles(profiles_path)
         if profile_set_name not in loaded.profile_sets:
             available = ", ".join(sorted(loaded.profile_sets))
@@ -36,7 +43,9 @@ class Orchestrator:
             name: ModelProfile(name=name, **values) for name, values in loaded.profiles.items()
         }
         self.router = ModelRouter(self.profiles, self.profile_set)
-        self.model_registry = ModelRegistry(self.profiles)
+        self.model_registry = ModelRegistry(
+            self.profiles, backend=backend, ollama_config=ollama_config
+        )
         self.rag = CompressedRAG(DEFAULT_KB)
         self.lab = LocalLabAdapter(ROOT)
 
@@ -138,6 +147,7 @@ class Orchestrator:
             "fixture_id": manifest["id"],
             "title": manifest["title"],
             "profile_set": self.profile_set_name,
+            "backend": self.model_registry.backend_label,
             "status": status,
             "validated_findings": validated_findings,
             "budget": budget.to_dict(),
@@ -154,6 +164,7 @@ class Orchestrator:
             "fixture_id": manifest.get("id", "unknown"),
             "title": manifest.get("title", "unknown"),
             "profile_set": self.profile_set_name,
+            "backend": self.model_registry.backend_label,
             "status": "stopped",
             "reason": reason,
             "validated_findings": [],

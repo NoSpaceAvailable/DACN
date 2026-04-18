@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 outputs/*
 !outputs/.gitkeep
+.ssh/
+.env
+.env.local
+notes/_*.txt
+notes/_*.pdf
