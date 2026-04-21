@@ -14,14 +14,15 @@
 | **1** | Ollama integration (D1 VPS / D2 adapter / D3 LLM-recon) | 🟢 done — 36 tests pass, end-to-end qua gemma4 |
 | **— ARCHITECTURE PIVOT 2026-04-18 (sau họp thầy) —** | 4-layer + Dispatcher-as-LLM-agent + LangChain abstraction. Xem `notes/architecture-v2.md`. | |
 | **2** | LangChain foundation: BaseAgent / BaseTool / Blackboard refactor + backend factory (ollama/openai/anthropic/openrouter) | 🟢 done — 91/91 tests pass, Neo4j compose ready |
-| **3** | Dispatcher (LangGraph supervisor, Claude-CLI style) replaces linear orchestrator | ⚪ pending |
-| **4** | Tool layer + per-job Docker sandbox (Nmap/Curl/Sqlmap/Python tools) | ⚪ pending |
-| **5** | RAG + Knowledge Graph (LlamaIndex KB + networkx KG, query_kg/query_rag tools) | ⚪ pending |
-| **6** | C1 mid-thinking intervention + C2 anti-loop guard (NOVEL contributions) | ⚪ pending |
+| **3** | Dispatcher (LLM-driven supervisor, Claude-CLI style) replaces linear orchestrator | 🟢 done — 115/115 tests pass |
+| **4** | Tool layer + per-job Docker sandbox (Nmap/Curl/HttpProbe/Python tools) | 🟢 done — 148/148 tests, docker smoke ✓ |
+| **5** | RAG + Knowledge Graph (InMemoryKG + Neo4j opt-in, query_kg/query_rag tools) | 🟢 done — 173/173 tests |
+| **6a** | **C2 anti-loop guard** (NOVEL — signature-based structural loop break) | 🟢 done — 158/158 tests |
+| **6b** | **C1 mid-thinking intervention** (NOVEL — streaming watchdog) | 🟢 done — 187/187 tests |
 | **7** | Specialised tools (blind timing sampler, Z3, hashcat) | ⚪ pending |
 | **8** | Dataset distillation (~5k CVE+writeup token-efficient entries) | ⚪ pending |
-| **9** | Eval matrix vs gpt-5-mini / claude-sonnet (target ≥80%) | ⚪ pending |
-| **10** | Thesis writeup | ⚪ pending |
+| **9** | Eval matrix vs gpt-5-mini / claude-sonnet (target ≥80%) | 🟡 scripted ablation done; real-LLM sub-Sprint pending |
+| **10** | Thesis writeup | 🟡 5 chapter skeletons drafted |
 
 Legend: 🟢 done · 🟡 in progress · 🔴 blocked · ⚪ pending
 
@@ -147,6 +148,73 @@ Sketch:
 ---
 
 ## Session log
+
+### 2026-04-21 (Sprint 8 done — Ablation matrix + thesis skeletons)
+
+- **`engine/ablation.py`** — `run_ablation(fixtures, chat_model_factory, configs, outputs_root)` runs each (fixture × config) combination. 5 default configs: `baseline`, `C2_only`, `C3_only`, `C1_only`, `all`. Emits `AblationReport` with `.to_dict()` (JSON) + `.to_markdown()` (summary table + per-fixture detail table).
+- **Metric columns**: status, steps, tool_calls, loop_detected (from memory.json events), watchdog_trips (from run_summary), approx_kg_tokens + approx_rag_tokens (from tool artifact metadata), wall_ms.
+- **`cli.py`** — `vapt-safe ablation --fixtures-dir ... --outputs-root ...` runs offline with a built-in scripted chat model per fixture; output: `ablation_report.json` + `ablation_report.md`.
+- **Thesis**: 5 chapter skeletons written in `thesis/01..05_*.md` — introduction (problem + C1/C2/C3 framing), related work (PentestGPT / Red-MIRROR / MAPTA + gap table), method (4-layer arch + algo sketches), evaluation (ablation placeholder + real-LLM plan), conclusion (limitations + Sprint 9 roadmap).
+- **Tests**: +5 (ablation matrix coverage, KG token accumulation by config, markdown rendering, config completeness). Total **192 passed, 1 skipped**.
+- Verified: `vapt-safe ablation` produces 15 runs × 8 metric columns end-to-end on the 3 scaffold fixtures, each config writes its own run directory.
+
+### 2026-04-21 (C1 mid-thinking intervention done — NOVEL contribution #3, headline)
+
+- **`engine/watchdogs.py`**:
+  - `DriftWatchdog(focus_keywords, max_drift_chars, min_buffer_chars)` — fires when the streamed buffer grows past the drift budget without mentioning any focus keyword (manifest id / title / skills / allowed hosts).
+  - `ScopeWatchdog(scope_guard)` — regex-scans the buffer for URLs; trips on the first out-of-scope hit; dedupes so a repeated URL doesn't refire.
+  - `LoopWatchdog(blackboard, threshold)` — pattern-matches a "name/args" tool-call JSON in the stream; trips when the proposed tool name is already at the loop-signature threshold.
+- **`engine/dispatcher.py`** — `Dispatcher.watchdogs` + `Dispatcher._call_llm`. When watchdogs are configured AND the chat model has `.stream()`, streams the response, runs watchdogs after every chunk. On trip → log event, queue `correction_for_next_turn`, return partial `AIMessage(content="[intervened:…]")` + `intervened=True`. Dispatcher advances to the next step, `before_step` injects the correction, LLM sees it immediately.
+- **`engine/dispatcher_runner.py`** — `enable_mid_thinking=False` default (needs a streaming model). `mid_thinking_focus` defaults to `manifest.id + manifest.title + skills + allow_hosts`. Watchdog trips surfaced in `run_summary.json["watchdog_trips"]` for eval.
+- **Why this is the headline**: PentestGPT / Red-MIRROR / MAPTA all wait for EOS before reacting. DACN cancels mid-stream the moment the model drifts / goes out of scope / is about to loop. Cost of being wrong = one partial chunk instead of 1000+ CoT tokens.
+- **Tests**: +14 (4 drift, 3 scope, 2 loop, 5 dispatcher streaming integration). Total **187 passed, 1 skipped**.
+
+### 2026-04-21 (C3 Knowledge-graph RAG done — NOVEL contribution #2)
+
+- **`kg/` package**:
+  - `knowledge_graph.py` — `KG` Protocol + `KGFact` triple + `build_default_kg()` seeds IDOR/SSRF/SQLi payloads, sinks, frameworks, CWEs.
+  - `in_memory.py` — `InMemoryKG` dict-of-dict graph. Thread-safe (RLock), supports `query_by_family` / `query_by_framework` / `query_triples` / `neighbours`. Used by default in tests and local dev.
+  - `neo4j_kg.py` — `Neo4jKG` wraps the official driver, parameterised Cypher, label-name validation. Activated when `NEO4J_PASSWORD` env is set; otherwise `InMemoryKG` stays the default.
+- **`tools/kg_tools.py`** — `QueryKGTool` (subject/attack_family/framework lookup → compact triples) and `QueryRAGTool` (fallback over the compressed cards). Both record `approx_tokens` in metadata — headline metric for C3.
+- **Test `test_kg_is_cheaper_than_rag_for_same_question`** asserts the KG query returns materially fewer tokens than the equivalent RAG lookup for the same intent.
+- **`engine/dispatcher_runner.py`** — KG auto-built + written to `blackboard.kg_handle` before dispatch; `query_kg` + `query_rag` tools attached when `enable_kg=True` (default). Real Neo4j is opt-in via `kg=Neo4jKG(...)` override.
+- **Prompt update** — dispatcher.md now advertises `query_kg` as preferred over `query_rag` for payload/sink/framework questions.
+- **Tests**: +15 (5 InMemoryKG, 5 Neo4jKG mocked, 3 QueryKGTool, 1 QueryRAGTool, 1 KG-vs-RAG token comparison). Total **173 passed, 1 skipped**.
+
+### 2026-04-21 (C2 anti-loop guard done — NOVEL contribution #1)
+
+- **`engine/anti_loop.py`**:
+  - `LoopGuard` — pure detection. Inspects `Blackboard.loop_signatures` (already pushed by `BaseTool._record()` as `hash(tool_name, kwargs)`). Threshold default 3; fires once per unique signature then arms after `reset()`.
+  - `AntiLoopHook(DispatcherHook)` — on detection, logs `loop_detected` event, resets signatures, injects a synthetic `HumanMessage` into the NEXT dispatcher turn telling the LLM to call `pivot(reason=...)` and pick a different attack family. `max_trips=4` guardrail prevents wedge on broken runs.
+- **`engine/dispatcher.py`** — `DispatcherHook.before_step` now receives the live `messages: List[BaseMessage]` (not Sequence) so hooks can append mid-run. Clean seam for C1 streaming watchdog later.
+- **`engine/dispatcher_runner.py`** — `enable_anti_loop=True` default, `anti_loop_threshold=3` exposed. Sprint 8 ablation (`enable_anti_loop=False`) will compare with/without C2 on the same fixtures.
+- Why this matters: PentestGPT / VulnBot / AutoPT retry blindly; Red-MIRROR's Inter-reflection still loops within the same family. Structural signature check works regardless of model reasoning — same on gemma-4B or claude-sonnet.
+- **Tests**: +10 tests (5 LoopGuard, 3 AntiLoopHook integration, 2 DispatcherRunner wiring). Total **158 passed, 1 skipped**.
+
+### 2026-04-21 (Sprint 4 done — Tool layer + Docker sandbox)
+
+- **`utils/scope.py`** — `Scope` + `ScopeGuard`. Deny-by-default target allowlist derived from `manifest["scope"]`. Checks hosts, CIDRs, ports, full URLs. Default = loopback-only + common web ports — this is how we honour the README's "no public probing" guarantee while running real binaries.
+- **`tools/shell.py`** — `ShellTool` base wrapping `subprocess.run` with timeout/kill, clean exit-code mapping (124 on timeout), and binary-missing check. Subclasses only implement `build_argv` + call scope guard.
+- **`tools/security/`** — three concrete tools:
+  - `NmapTool` (`nmap_scan`) — `-Pn -T4 -oX -` with top-100 ports or explicit list, optional `-sV`.
+  - `CurlTool` (`curl_request`) — raw curl when the LLM needs specific flags; max-redirs=3, per-call scope check.
+  - `HttpProbeTool` (`http_probe`) — pure-python `requests` preferred path; redirects DISABLED so scope stays in control; response returned as structured JSON (status / headers / truncated body).
+- **`sandbox/docker_sandbox.py`** — `DockerSandbox` shells out to docker CLI (swappable via `DOCKER_BIN=podman`). Flags: `--rm --network=none --read-only --tmpfs /tmp --cpus 0.5 --memory 256m --pids-limit 64 --security-opt no-new-privileges:true`. Ephemeral tmpdir-bind-mount passes the script in; timeout auto-kills the container.
+- **`tools/sandbox_exec.py`** — `RunPythonInSandboxTool` (`run_python_sandbox`). Size-capped (20k chars), returns full sandbox payload as JSON.
+- **`engine/dispatcher_runner.py`** — auto-wires security tools ONLY when fixture declares a `scope` block, so existing source-only fixtures keep working unchanged. Sandbox tool attached unconditionally (it has no network by default).
+- **`prompts/dispatcher.md`** — updated to describe new tools, scope contract, and the "stay on declared target, don't fight the guard" rule.
+- **Tests**: +33 tests across scope / security / sandbox. Docker smoke (`test_sandbox_real_docker_hello_world`) passes end-to-end with real docker after pre-pulling `python:3.11-slim`. Total **148 passed, 1 skipped (docker opt-in)**.
+
+### 2026-04-21 (Sprint 3 done — Dispatcher skeleton)
+
+- **`engine/dispatcher.py`** — minimal tool-use loop (Claude-CLI style, NOT LangGraph — simpler, less deps, same semantics). Supports `DispatcherHook.before_step/after_step` so Sprint 6 (C1) can plug in streaming watchdog without refactor.
+- **`tools/agent_tools.py`** — 6 tool wrappers: `invoke_recon`, `invoke_signature`, `invoke_analyst`, `invoke_exploit` (pairs exploit+validator in one call), `invoke_report`, and `pivot` (sentinel stub; full anti-loop wiring in Sprint 6). Tools read/write `Blackboard.phase_context` so sub-agent state is persistent across dispatcher turns.
+- **`engine/dispatcher_runner.py`** — end-to-end wiring. Intake still runs procedurally (just file I/O, no LLM). Dispatcher LLM resolved via `build_for_role("dispatcher")` so `LLM_BACKEND_DISPATCHER` env var is the single switch between ollama/openai/anthropic/openrouter.
+- **`prompts/dispatcher.md`** — supervisor system prompt: pipeline order, stop-when-verified rule, pivot protocol, budget awareness.
+- **`cli.py`** — `vapt-safe dispatch --fixture ... --goal "..."` subcommand, reuses legacy `--llm` flag for sub-agents.
+- **`memory/shared_memory.py`** — `Blackboard.snapshot()` now flattens dataclasses in `phase_context` via new `_jsonable()` helper so `Hypothesis` / `CandidatePoC` / `ValidationResult` serialise cleanly.
+- **Tests**: 24 new tests (10 dispatcher, 11 agent_tools, 3 dispatcher_runner). Total **115/115 pass** (91 prior + 24).
+- Legacy `engine/orchestrator.py` + `vapt-safe run` kept intact as regression baseline. Both pipelines produce comparable `run_summary.json` (field `pipeline` tags which one).
 
 ### 2026-04-18 (Sprint 2 done — LangChain foundation)
 

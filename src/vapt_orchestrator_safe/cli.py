@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from typing import List
 
@@ -12,6 +13,7 @@ from vapt_orchestrator_safe.config import (
     load_profiles,
 )
 from vapt_orchestrator_safe.engine.benchmark import BenchmarkRunner
+from vapt_orchestrator_safe.engine.dispatcher_runner import DispatcherRunner
 from vapt_orchestrator_safe.engine.orchestrator import Orchestrator
 from vapt_orchestrator_safe.llm.registry import OllamaConfig, parse_backend
 from vapt_orchestrator_safe.utils.io import ensure_dir
@@ -110,6 +112,103 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dispatch(args: argparse.Namespace) -> int:
+    """Run a fixture through the v2 LLM-driven Dispatcher (Claude-CLI style).
+
+    Routes the supervisor LLM via the LangChain backend factory — set
+    ``LLM_BACKEND_DISPATCHER`` (or ``LLM_BACKEND_DEFAULT``) in the env,
+    e.g. ``ollama:gemma4:e2b`` / ``openai:gpt-5-mini`` / ``anthropic:claude-sonnet-4-5``.
+    Sub-agents still use the legacy --llm backend for now (that will
+    migrate to LangChain in later sprints).
+    """
+    fixture = Path(args.fixture)
+    ollama_config = _resolve_ollama_config(args.llm)
+    runner = DispatcherRunner(
+        profile_set_name=args.profile_set,
+        profiles_path=Path(args.profiles),
+        outputs_root=Path(args.outputs_root),
+        backend=args.llm,
+        ollama_config=ollama_config,
+        max_steps=args.max_steps,
+    )
+    summary = runner.run_fixture(fixture, goal=args.goal)
+    print(f"Dispatcher run complete: {summary['status']}")
+    print(f"Supervisor backend: {summary.get('backend', '?')}")
+    print(f"Sub-agent backend:  {runner.model_registry.backend_label}")
+    print(f"Steps taken:        {summary['steps']} (stop_reason={summary['stop_reason']})")
+    print(f"Tool invocations:   {len(summary['tool_invocations'])}")
+    print(f"Output dir:         {summary['output_dir']}")
+    print(f"Validated findings: {len(summary.get('validated_findings', []))}")
+    return 0
+
+
+def cmd_ablation(args: argparse.Namespace) -> int:
+    """Run the DACN ablation matrix — baseline × C2 × C3 × C1 × all.
+
+    Uses a canned scripted chat model per fixture so runs are
+    reproducible without API cost. For a real-LLM ablation, wire a
+    different factory via the programmatic API (not exposed on CLI yet).
+    """
+    from langchain_core.messages import AIMessage
+    from vapt_orchestrator_safe.engine.ablation import run_ablation
+
+    fixtures_dir = Path(args.fixtures_dir)
+    out_dir = ensure_dir(Path(args.outputs_root))
+    fixtures = sorted(p for p in fixtures_dir.iterdir() if p.is_dir())
+    if not fixtures:
+        raise SystemExit(f"No fixtures found in {fixtures_dir!r}")
+
+    # Canned script — tries the highest-confidence family for each fixture.
+    fixture_family = {
+        "challenge_idor_01": "IDOR",
+        "challenge_ssrf_01": "SSRF",
+        "challenge_sqli_01": "SQLi",
+    }
+
+    def factory(fixture_name: str, config_name: str):
+        family = fixture_family.get(fixture_name, "IDOR")
+        script = [
+            AIMessage(content="", tool_calls=[{"id": "r1", "name": "invoke_recon", "args": {}}]),
+            AIMessage(content="", tool_calls=[{"id": "s1", "name": "invoke_signature", "args": {}}]),
+            AIMessage(content="", tool_calls=[{"id": "a1", "name": "invoke_analyst", "args": {}}]),
+            AIMessage(content="", tool_calls=[{"id": "k1", "name": "query_kg",
+                                               "args": {"attack_family": family}}]),
+            AIMessage(content="", tool_calls=[{"id": "e1", "name": "invoke_exploit",
+                                               "args": {"attack_family": family}}]),
+            AIMessage(content="", tool_calls=[{"id": "rp", "name": "invoke_report", "args": {}}]),
+            AIMessage(content=f"Confirmed {family}.", tool_calls=[]),
+        ]
+        return _ScriptedChatModel(script)
+
+    report = run_ablation(
+        fixtures=fixtures,
+        chat_model_factory=factory,
+        outputs_root=out_dir,
+        max_steps=args.max_steps,
+    )
+    report_path = out_dir / "ablation_report.json"
+    report_path.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
+    md_path = out_dir / "ablation_report.md"
+    md_path.write_text(report.to_markdown(), encoding="utf-8")
+    print(f"Ablation done. {len(report.rows)} runs across {len(fixtures)} fixtures.")
+    print(f"  JSON: {report_path}")
+    print(f"  MD:   {md_path}")
+    return 0
+
+
+class _ScriptedChatModel:
+    """Minimal scripted chat model shared between CLI + tests."""
+
+    def __init__(self, script):
+        self._script = iter(script)
+
+    def bind_tools(self, _tools):
+        return self
+
+    def invoke(self, _messages, **_kwargs):
+        return next(self._script)
+
+
 def cmd_llm_test(args: argparse.Namespace) -> int:
     """Probe the configured Ollama backend without running a full pipeline.
 
@@ -200,6 +299,45 @@ def build_parser() -> argparse.ArgumentParser:
     profiles_parser = sub.add_parser("profiles", help="List available profiles and profile sets")
     profiles_parser.add_argument("--profiles", default=str(DEFAULT_PROFILES), help="Path to profile config JSON")
     profiles_parser.set_defaults(func=cmd_profiles)
+
+    dispatch_parser = sub.add_parser(
+        "dispatch",
+        help="Run a fixture through the LLM-driven Dispatcher (v2 pipeline)",
+    )
+    dispatch_parser.add_argument("--fixture", required=True, help="Path to fixture directory")
+    dispatch_parser.add_argument(
+        "--profile-set", default="mixed_default",
+        help="Sub-agent profile set (for legacy BaseAgents)",
+    )
+    dispatch_parser.add_argument(
+        "--profiles", default=str(DEFAULT_PROFILES),
+        help="Path to profile config JSON",
+    )
+    dispatch_parser.add_argument(
+        "--outputs-root", default=str(DEFAULT_OUTPUTS),
+        help="Directory for run outputs",
+    )
+    dispatch_parser.add_argument(
+        "--max-steps", type=int, default=20,
+        help="Hard cap on dispatcher tool-use iterations (default: 20)",
+    )
+    dispatch_parser.add_argument(
+        "--goal", default=None,
+        help="Natural-language goal for the dispatcher (default: built-in).",
+    )
+    _add_llm_arg(dispatch_parser)
+    dispatch_parser.set_defaults(func=cmd_dispatch)
+
+    ablation_parser = sub.add_parser(
+        "ablation",
+        help="Run the DACN ablation matrix (baseline × C2 × C3 × C1 × all) offline",
+    )
+    ablation_parser.add_argument("--fixtures-dir", default=str(DEFAULT_FIXTURES),
+                                 help="Directory of fixture dirs")
+    ablation_parser.add_argument("--outputs-root", default=str(DEFAULT_OUTPUTS / "ablation"),
+                                 help="Where to write run dirs + ablation_report.{json,md}")
+    ablation_parser.add_argument("--max-steps", type=int, default=15)
+    ablation_parser.set_defaults(func=cmd_ablation)
 
     llm_test_parser = sub.add_parser(
         "llm-test", help="Probe the configured Ollama backend (list tags + 1 generate call)"

@@ -19,7 +19,7 @@ continue to work.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 from threading import RLock
 from typing import Any, Deque, Dict, List, Optional
@@ -119,13 +119,30 @@ class Blackboard:
                 "task_graph": list(self.task_graph),
                 "events": list(self.events),
                 "budget": dict(self.budget),
-                "phase_context": {k: dict(v) for k, v in self.phase_context.items()},
+                "phase_context": {k: _jsonable(v) for k, v in self.phase_context.items()},
                 "loop_signatures": list(self.loop_signatures),
                 # kg_handle is intentionally NOT serialised (it's a live driver)
             }
 
     def persist(self) -> None:
         write_json(self.run_dir / "memory.json", self.snapshot())
+
+
+def _jsonable(value: Any) -> Any:
+    """Recursively convert dataclasses / tuples into JSON-friendly forms.
+
+    Phase-context dicts freely hold ``Hypothesis`` / ``CandidatePoC`` /
+    ``ValidationResult`` instances (rich dataclasses) so downstream tools
+    keep strong types; this helper flattens them only at snapshot time so
+    the on-disk memory.json stays portable.
+    """
+    if is_dataclass(value) and not isinstance(value, type):
+        return asdict(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return value
 
 
 # ── backwards compatibility ────────────────────────────────────────────────
