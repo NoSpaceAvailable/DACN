@@ -196,6 +196,40 @@ def cmd_ablation(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ingest(args: argparse.Namespace) -> int:
+    """Load the seed corpus (or a JSONL file) and populate the knowledge graph."""
+    from vapt_orchestrator_safe.dataset import Distiller
+    from vapt_orchestrator_safe.kg import InMemoryKG, build_default_kg
+
+    if args.input:
+        distiller = Distiller.from_jsonl(Path(args.input))
+        print(f"Loaded {len(distiller.entries)} entries from {args.input}")
+    else:
+        distiller = Distiller.from_seed()
+        print(f"Loaded {len(distiller.entries)} entries from built-in seed corpus")
+
+    stats = distiller.stats()
+    print(f"  Classes: {stats['by_class']}")
+    print(f"  Severities: {stats['by_severity']}")
+    print(f"  Payloads: {stats['total_payloads']}")
+    print(f"  Approx tokens: {stats['approx_total_tokens']}")
+
+    if args.export:
+        out_path = Path(args.export)
+        count = distiller.to_jsonl(out_path)
+        print(f"  Exported {count} entries to {out_path}")
+
+    if args.populate_kg:
+        kg = InMemoryKG()
+        build_default_kg(kg)
+        counts = distiller.populate_kg(kg)
+        nodes, edges = kg.size()
+        print(f"  KG populated: {counts['nodes_added']} CVEs ingested, "
+              f"total {nodes} nodes / {edges} edges")
+
+    return 0
+
+
 class _ScriptedChatModel:
     """Minimal scripted chat model shared between CLI + tests."""
 
@@ -338,6 +372,24 @@ def build_parser() -> argparse.ArgumentParser:
                                  help="Where to write run dirs + ablation_report.{json,md}")
     ablation_parser.add_argument("--max-steps", type=int, default=15)
     ablation_parser.set_defaults(func=cmd_ablation)
+
+    ingest_parser = sub.add_parser(
+        "ingest",
+        help="Load seed corpus or JSONL dataset, show stats, optionally populate KG",
+    )
+    ingest_parser.add_argument(
+        "--input", default=None,
+        help="Path to a JSONL file with CveEntry records. If omitted, uses built-in seed.",
+    )
+    ingest_parser.add_argument(
+        "--export", default=None,
+        help="Export the corpus to a JSONL file.",
+    )
+    ingest_parser.add_argument(
+        "--populate-kg", action="store_true",
+        help="Populate an in-memory KG and print stats.",
+    )
+    ingest_parser.set_defaults(func=cmd_ingest)
 
     llm_test_parser = sub.add_parser(
         "llm-test", help="Probe the configured Ollama backend (list tags + 1 generate call)"

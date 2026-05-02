@@ -19,8 +19,8 @@
 | **5** | RAG + Knowledge Graph (InMemoryKG + Neo4j opt-in, query_kg/query_rag tools) | 🟢 done — 173/173 tests |
 | **6a** | **C2 anti-loop guard** (NOVEL — signature-based structural loop break) | 🟢 done — 158/158 tests |
 | **6b** | **C1 mid-thinking intervention** (NOVEL — streaming watchdog) | 🟢 done — 187/187 tests |
-| **7** | Specialised tools (blind timing sampler, Z3, hashcat) | ⚪ pending |
-| **8** | Dataset distillation (~5k CVE+writeup token-efficient entries) | ⚪ pending |
+| **7** | Specialised tools (blind timing sampler, Z3 solver, hashcat) | 🟢 done — 246/246 tests pass |
+| **8** | Dataset distillation (40-entry seed corpus + Distiller pipeline + KG population + CLI ingest) | 🟢 done — 246/246 tests pass |
 | **9** | Eval matrix vs gpt-5-mini / claude-sonnet (target ≥80%) | 🟡 scripted ablation done; real-LLM sub-Sprint pending |
 | **10** | Thesis writeup | 🟡 5 chapter skeletons drafted |
 
@@ -148,6 +148,28 @@ Sketch:
 ---
 
 ## Session log
+
+### 2026-05-02 (Sprint 7 + 8 done — Specialised tools + Dataset pipeline)
+
+**Sprint 7 — Specialised tools:**
+- **`tools/security/timing.py`** — `BlindTimingSampler` (`blind_timing`): pure-Python timing side-channel detector for blind SQL injection. Sends baseline vs payload HTTP requests, compares response time delta. Scope-gated. Addresses the **#1 gap** across all 6 papers (0% blind SQLi success rate).
+  - Input: url, param_name, baseline_value, payload_value, inject_in (query/body/json), sleep_seconds, samples, threshold.
+  - Output: JSON with baseline_avg_ms, payload_avg_ms, delta_ms, is_vulnerable, confidence stats.
+- **`tools/security/z3_solver.py`** — `Z3ConstraintSolver` (`z3_solve`): structured SMT constraint solver for crypto/token/nonce puzzles. Accepts variables (int/bitvec) and constraints (==, !=, >, <, %%, &, |). No eval/exec — safe DSL translated to Z3 assertions. Graceful degradation when z3-solver not installed.
+- **`tools/security/hashcat.py`** — `HashcatTool` (`hashcat_crack`): ShellTool subclass wrapping hashcat binary. Dictionary + combinator modes. Runtime capped at 120s. No scope needed (local computation).
+- **Dispatcher wiring**: `enable_specialized_tools=True` flag in DispatcherRunner. BlindTimingSampler only attached when fixture declares scope; Z3 + hashcat always available.
+- **Prompt update**: `prompts/dispatcher.md` describes all 3 new tools.
+- **Dependency**: `z3-solver>=4.12` added to `requirements.txt`.
+- **Tests**: +37 (10 timing, 14 Z3, 13 hashcat).
+
+**Sprint 8 — Dataset distillation pipeline:**
+- **`dataset/cve_entry.py`** — `CveEntry` dataclass: cve_id, cwe_id, title, vuln_class, severity, description, affected_frameworks, sinks, sources, payload_templates, oracle_hints, remediation, tags, references. Methods: `to_dict()`, `from_dict()`, `to_kg_text()` (compact ~50-150 token representation), `approx_tokens`.
+- **`dataset/seed.py`** — 40 curated entries covering 8 vulnerability classes: SQLi (8, including blind/boolean/second-order/error-based), IDOR (6), SSRF (6), XSS (5), RCE (7), AuthBypass (4), PathTraversal (3), DoS (1). Each entry has real CVE IDs or DACN-prefixed synthetic entries with payload templates and oracle hints.
+- **`dataset/distiller.py`** — `Distiller` pipeline: `from_seed()`, `from_jsonl(path)`, `to_jsonl(path)`, `filter_by_class()`, `filter_by_severity()`, `merge()`, `populate_kg(kg)` (creates CVE/CWE/Framework/Sink/Payload nodes + edges), `stats()`.
+- **KG population**: `Distiller.from_seed().populate_kg(kg)` auto-runs in DispatcherRunner alongside `build_default_kg()`. Result: 188 nodes / 318 edges out-of-the-box.
+- **CLI**: `vapt-safe ingest [--input FILE.jsonl] [--export OUT.jsonl] [--populate-kg]` — stats + optional KG population + JSONL export.
+- **Tests**: +17 (CveEntry model, seed corpus validation, Distiller pipeline, KG population, token-efficiency assertion).
+- Total test suite: **246 passed, 1 skipped** (192 prior + 54 new).
 
 ### 2026-04-21 (Sprint 8 done — Ablation matrix + thesis skeletons)
 

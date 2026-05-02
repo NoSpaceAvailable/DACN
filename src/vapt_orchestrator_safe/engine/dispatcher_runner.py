@@ -50,6 +50,7 @@ from vapt_orchestrator_safe.memory.rag import CompressedRAG
 from vapt_orchestrator_safe.memory.shared_memory import Blackboard
 from vapt_orchestrator_safe.prompts import load_prompt
 from vapt_orchestrator_safe.sandbox.local_lab import LocalLabAdapter
+from vapt_orchestrator_safe.dataset import Distiller
 from vapt_orchestrator_safe.kg import InMemoryKG, build_default_kg
 from vapt_orchestrator_safe.sandbox.docker_sandbox import DockerSandbox
 from vapt_orchestrator_safe.tools.agent_tools import (
@@ -62,7 +63,14 @@ from vapt_orchestrator_safe.tools.agent_tools import (
 )
 from vapt_orchestrator_safe.tools.kg_tools import QueryKGTool, QueryRAGTool
 from vapt_orchestrator_safe.tools.sandbox_exec import RunPythonInSandboxTool
-from vapt_orchestrator_safe.tools.security import CurlTool, HttpProbeTool, NmapTool
+from vapt_orchestrator_safe.tools.security import (
+    BlindTimingSampler,
+    CurlTool,
+    HashcatTool,
+    HttpProbeTool,
+    NmapTool,
+    Z3ConstraintSolver,
+)
 from vapt_orchestrator_safe.utils.scope import Scope, ScopeGuard
 from vapt_orchestrator_safe.types import ModelProfile
 from vapt_orchestrator_safe.utils.io import ensure_dir, write_json
@@ -95,6 +103,7 @@ class DispatcherRunner:
         anti_loop_threshold: int = 3,
         enable_kg: bool = True,
         kg: Optional[Any] = None,
+        enable_specialized_tools: bool = True,
         enable_mid_thinking: bool = False,
         mid_thinking_focus: Optional[List[str]] = None,
         mid_thinking_max_drift_chars: int = 1200,
@@ -128,6 +137,7 @@ class DispatcherRunner:
         self.anti_loop_threshold = anti_loop_threshold
         self.enable_kg = enable_kg
         self._kg_override = kg
+        self.enable_specialized_tools = enable_specialized_tools
         self.enable_mid_thinking = enable_mid_thinking
         self.mid_thinking_focus = mid_thinking_focus or []
         self.mid_thinking_max_drift_chars = mid_thinking_max_drift_chars
@@ -205,6 +215,24 @@ class DispatcherRunner:
                 {"tools": ["nmap_scan", "curl_request", "http_probe"]},
             )
 
+        # Specialized tools (Sprint 7): blind timing, Z3 solver, hashcat.
+        # Attached when enabled — Z3 and hashcat don't need scope; timing
+        # does (it sends HTTP requests).
+        if self.enable_specialized_tools:
+            specialized_names = []
+            if scope_declared:
+                tools.append(BlindTimingSampler(scope=scope_guard if scope_declared else None))
+                specialized_names.append("blind_timing")
+            tools.append(Z3ConstraintSolver())
+            specialized_names.append("z3_solve")
+            tools.append(HashcatTool())
+            specialized_names.append("hashcat_crack")
+            if specialized_names:
+                blackboard.log_event(
+                    "dispatcher_runner", "specialized_tools.enabled",
+                    {"tools": specialized_names},
+                )
+
         # Sandbox runs offline by default; attach unconditionally so the LLM can
         # always do crypto / parsing work without a network target.
         if self.enable_sandbox:
@@ -219,6 +247,7 @@ class DispatcherRunner:
             if kg is None:
                 kg = InMemoryKG()
                 build_default_kg(kg)
+                Distiller.from_seed().populate_kg(kg)
             blackboard.kg_handle = kg
             nodes, edges = kg.size()
             blackboard.log_event("dispatcher_runner", "kg.enabled",

@@ -20,6 +20,12 @@ These shell out to real binaries / HTTP libraries against the fixture's whitelis
 - `curl_request(url, method?, headers?, data?, max_time?)` — raw curl, useful when you need specific curl flags.
 - `run_python_sandbox(script, timeout?, env?)` — run a short Python script in a throwaway container (default `--network=none`, read-only root, 256 MB / 0.5 CPU cap). Use for payload generation, crypto math, or parsing — not for networking.
 
+## Specialized tools
+
+- `blind_timing(url, param_name, baseline_value, payload_value, ...)` — detect blind SQL injection (or other time-based side channels) by comparing response times between baseline and payload requests. Use when you suspect a parameter is injectable but there is no visible error output. Requires fixture scope.
+- `z3_solve(variables, constraints, num_solutions?)` — solve integer / bit-vector constraints using Z3 SMT solver. Useful for crypto puzzles, token arithmetic, and parameter-space search.
+- `hashcat_crack(hash_value, hash_type?, wordlist?, ...)` — crack a password hash using hashcat dictionary attack. CPU-only; best for weak passwords. Supports md5, sha1, sha256, sha512, bcrypt, ntlm.
+
 ## Knowledge retrieval
 
 - `query_kg(attack_family?, framework?, subject?, limit?)` — **preferred** cheap lookup into the defensive knowledge graph. Returns compact subject-predicate-object triples. Use when you need "what payloads target this sink / framework / attack family". Typically 10-20× cheaper than raw RAG for the same question.

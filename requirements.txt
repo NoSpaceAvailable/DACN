@@ -10,3 +10,6 @@ pydantic>=2.7
 
 # Neo4j driver for Knowledge Graph (Sprint 5 wires this in; Sprint 2 just sets up the DB)
 neo4j>=5.20
+
+# Z3 SMT solver for constraint-solving tool (Sprint 7)
+z3-solver>=4.12
