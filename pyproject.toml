@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vapt-orchestrator-safe"
 version = "0.1.0"
-description = "Defensive research scaffold for multi-agent web security orchestration in a local lab"
+description = "Offensive research scaffold for multi-agent web security orchestration in a local lab"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
