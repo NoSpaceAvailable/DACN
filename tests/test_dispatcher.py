@@ -274,3 +274,39 @@ def test_dispatcher_auto_fallback_to_text_tool_calling(tmp_path):
     assert any(inv["name"] == "add" and inv["ok"] for inv in r.tool_invocations)
     fallback_events = [e for e in bb.events if e["message"] == "text_tool_fallback"]
     assert len(fallback_events) == 1
+
+
+class _MisplacedToolCallModel:
+    """Returns tool-call JSON in content with tool_calls=[] (simulates weak models)."""
+
+    def __init__(self, responses: list[AIMessage]):
+        self._responses = iter(responses)
+
+    def bind_tools(self, tools):
+        return self
+
+    def invoke(self, messages, **_kwargs):
+        return next(self._responses)
+
+
+def test_dispatcher_adaptive_fallback_on_misplaced_tool_call(tmp_path):
+    """When native tool_calls is empty but content contains a JSON tool call,
+    the dispatcher switches to TextToolChatModel and rescues the call."""
+    model = _MisplacedToolCallModel([
+        AIMessage(
+            content='```json\n{"name": "add", "args": {"a": 3, "b": 4}}\n```',
+            tool_calls=[],
+        ),
+        AIMessage(content="The answer is 7.", tool_calls=[]),
+    ])
+    tool = AddTool()
+    bb = _bb(tmp_path)
+    d = Dispatcher(model, tools=[tool], blackboard=bb, system_prompt="sys", max_steps=5)
+    r = d.run("compute 3 + 4")
+
+    assert d._text_tool_fallback is True
+    assert r.stop_reason == "finished"
+    assert any(inv["name"] == "add" and inv["ok"] for inv in r.tool_invocations)
+    adaptive_events = [e for e in bb.events if e["message"] == "text_tool_fallback_adaptive"]
+    assert len(adaptive_events) == 1
+    assert adaptive_events[0]["data"]["rescued_tool"] == "add"

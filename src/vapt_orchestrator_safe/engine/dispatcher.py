@@ -180,24 +180,33 @@ class Dispatcher:
 
             tool_calls = getattr(response, "tool_calls", None) or []
             if not tool_calls:
-                self.blackboard.log_event(
-                    "dispatcher",
-                    f"step.{step}.finished",
-                    {"final_chars": len(response.content or "")},
-                )
-                if self.hook and not self.hook.after_step(step, response, []):
-                    return DispatcherResult(
-                        final_text=None, steps=step,
-                        stop_reason="hook_abort",
-                        messages=messages, tool_invocations=invocations,
+                rescued = self._try_rescue_tool_call(response, step)
+                if rescued is not None:
+                    tool_calls = [rescued]
+                    response = AIMessage(
+                        content=response.content or "",
+                        tool_calls=tool_calls,
                     )
-                return DispatcherResult(
-                    final_text=response.content,
-                    steps=step,
-                    stop_reason="finished",
-                    messages=messages,
-                    tool_invocations=invocations,
-                )
+                    messages[-1] = response
+                else:
+                    self.blackboard.log_event(
+                        "dispatcher",
+                        f"step.{step}.finished",
+                        {"final_chars": len(response.content or "")},
+                    )
+                    if self.hook and not self.hook.after_step(step, response, []):
+                        return DispatcherResult(
+                            final_text=None, steps=step,
+                            stop_reason="hook_abort",
+                            messages=messages, tool_invocations=invocations,
+                        )
+                    return DispatcherResult(
+                        final_text=response.content,
+                        steps=step,
+                        stop_reason="finished",
+                        messages=messages,
+                        tool_invocations=invocations,
+                    )
 
             step_invocations: List[Dict[str, Any]] = []
             for call in tool_calls:
@@ -252,6 +261,42 @@ class Dispatcher:
             tool_invocations=invocations,
         )
 
+
+    # ── adaptive rescue ──────────────────────────────────────────────────
+    def _try_rescue_tool_call(
+        self, response: AIMessage, step: int,
+    ) -> Optional[Dict[str, Any]]:
+        """If the model put a tool call in *content* instead of *tool_calls*,
+        parse it out and switch to ``TextToolChatModel`` for subsequent steps.
+        Returns the parsed tool-call dict, or ``None``."""
+        if self._text_tool_fallback:
+            return None
+        content = response.content or ""
+        if not content.strip():
+            return None
+
+        from vapt_orchestrator_safe.llm.text_tool_wrapper import (
+            TextToolChatModel,
+            _parse_tool_call,
+        )
+
+        parsed = _parse_tool_call(content, set(self.tools_by_name))
+        if parsed is None:
+            return None
+
+        logger.warning(
+            "Native tool_calls empty but content contains a tool call; "
+            "switching to text-based fallback (adaptive)."
+        )
+        self.blackboard.log_event(
+            "dispatcher", "text_tool_fallback_adaptive",
+            {"step": step, "rescued_tool": parsed["name"]},
+        )
+        self.chat_model = TextToolChatModel(
+            self._raw_chat_model, self._tools_list,
+        )
+        self._text_tool_fallback = True
+        return parsed
 
     # ── LLM invocation with optional streaming + watchdogs ──────────────
     def _call_llm(self, messages: List[BaseMessage]) -> Tuple[AIMessage, bool]:
