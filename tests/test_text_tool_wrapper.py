@@ -84,6 +84,14 @@ def test_parse_direct_name_args():
     assert tc["name"] == "add"
 
 
+def test_parse_openai_style_arguments_key():
+    text = '```json\n{"name": "add", "arguments": {"a": 3, "b": 4}}\n```'
+    tc = _parse_tool_call(text, KNOWN)
+    assert tc is not None
+    assert tc["name"] == "add"
+    assert tc["args"] == {"a": 3, "b": 4}
+
+
 def test_parse_no_json_returns_none():
     tc = _parse_tool_call("No tools needed. The answer is 42.", KNOWN)
     assert tc is None

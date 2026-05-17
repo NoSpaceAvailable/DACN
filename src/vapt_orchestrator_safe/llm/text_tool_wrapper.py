@@ -143,13 +143,14 @@ def _parse_tool_call(
         tc = data["tool_call"]
     elif "tool_calls" in data and isinstance(data["tool_calls"], list):
         tc = data["tool_calls"][0] if data["tool_calls"] else None
-    elif "name" in data and "args" in data:
+    elif "name" in data and ("args" in data or "arguments" in data):
         tc = data
 
     if tc and isinstance(tc.get("name"), str) and tc["name"] in known_names:
+        args = tc.get("args") or tc.get("arguments") or {}
         return {
             "name": tc["name"],
-            "args": tc.get("args") or {},
+            "args": args,
             "id": f"text_{tc['name']}",
         }
     return None
