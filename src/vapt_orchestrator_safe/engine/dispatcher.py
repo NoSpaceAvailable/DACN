@@ -26,6 +26,7 @@ later.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -40,6 +41,8 @@ from langchain_core.messages import (
 from vapt_orchestrator_safe.engine.watchdogs import Watchdog, WatchdogVerdict
 from vapt_orchestrator_safe.memory.shared_memory import Blackboard
 from vapt_orchestrator_safe.tools.base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 
 _DEFAULT_MAX_STEPS = 20
@@ -103,6 +106,9 @@ class Dispatcher:
         hook: Optional[DispatcherHook] = None,
         watchdogs: Optional[Sequence[Watchdog]] = None,
     ):
+        self._raw_chat_model = chat_model
+        self._tools_list = list(tools)
+        self._text_tool_fallback = False
         self.chat_model = self._maybe_bind(chat_model, tools)
         self.tools_by_name: Dict[str, BaseTool] = {t.name: t for t in tools}
         self.blackboard = blackboard
@@ -110,12 +116,9 @@ class Dispatcher:
         self.max_steps = max_steps
         self.hook = hook
         self.watchdogs: List[Watchdog] = list(watchdogs or [])
-        # When a watchdog trips, the correction is queued here and injected
-        # into the NEXT turn's messages (like AntiLoopHook).
         self._pending_correction: Optional[str] = None
         self.watchdog_trips: List[Dict[str, Any]] = []
 
-        # Inject blackboard once, so tools can append to artifacts / loop sigs.
         for tool in tools:
             if hasattr(tool, "bind_blackboard"):
                 tool.bind_blackboard(blackboard)
@@ -256,6 +259,31 @@ class Dispatcher:
         response and run each watchdog after every chunk. On trip, log the
         event, queue a correction for the next turn, and return (partial,
         intervened=True). Otherwise return (full_response, False)."""
+        try:
+            return self._call_llm_inner(messages)
+        except Exception as exc:
+            if not self._text_tool_fallback:
+                from vapt_orchestrator_safe.llm.text_tool_wrapper import (
+                    TextToolChatModel,
+                    is_tool_unsupported_error,
+                )
+                if is_tool_unsupported_error(exc):
+                    logger.warning(
+                        "Model does not support native tool-calling; "
+                        "switching to text-based fallback."
+                    )
+                    self.blackboard.log_event(
+                        "dispatcher", "text_tool_fallback",
+                        {"reason": str(exc)},
+                    )
+                    self.chat_model = TextToolChatModel(
+                        self._raw_chat_model, self._tools_list,
+                    )
+                    self._text_tool_fallback = True
+                    return self._call_llm_inner(messages)
+            raise
+
+    def _call_llm_inner(self, messages: List[BaseMessage]) -> Tuple[AIMessage, bool]:
         if not self.watchdogs or not hasattr(self.chat_model, "stream"):
             return self.chat_model.invoke(messages), False
 
@@ -264,7 +292,7 @@ class Dispatcher:
         for chunk in self.chat_model.stream(messages):
             last_chunk = chunk if last_chunk is None else (last_chunk + chunk)
             text_part = getattr(chunk, "content", "") or ""
-            if isinstance(text_part, list):                 # content can be a list of parts
+            if isinstance(text_part, list):
                 text_part = "".join(
                     p.get("text", "") if isinstance(p, dict) else str(p) for p in text_part
                 )
@@ -290,8 +318,6 @@ class Dispatcher:
                 )
                 return partial, True
 
-        # Stream finished without intervention. Convert the accumulated chunk
-        # into a plain AIMessage so downstream typing stays consistent.
         if last_chunk is None:
             return AIMessage(content="", tool_calls=[]), False
         return AIMessage(

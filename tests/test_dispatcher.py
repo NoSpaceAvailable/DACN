@@ -232,3 +232,45 @@ def test_dispatcher_skips_bind_when_no_tools(tmp_path):
     chat = _ScriptedChatModel([AIMessage(content="done", tool_calls=[])])
     Dispatcher(chat, tools=[], blackboard=_bb(tmp_path), system_prompt="sys")
     assert chat.bound_tools == []
+
+
+# ── text-tool fallback tests ────────────────────────────────────────────
+
+class _ToolUnsupportedModel:
+    """Raises 'does not support tools' on first invoke, then works via text."""
+
+    def __init__(self, text_responses: list[str]):
+        self._responses = iter(text_responses)
+        self._first = True
+
+    def bind_tools(self, tools):
+        return self
+
+    def invoke(self, messages, **_kwargs):
+        if self._first:
+            self._first = False
+            raise RuntimeError(
+                "registry.ollama.ai/library/test:7b does not support tools "
+                "(status code: 400)"
+            )
+        text = next(self._responses)
+        return AIMessage(content=text, tool_calls=[])
+
+
+def test_dispatcher_auto_fallback_to_text_tool_calling(tmp_path):
+    """When native tool-calling raises 'does not support tools', the
+    dispatcher switches to TextToolChatModel and retries."""
+    model = _ToolUnsupportedModel([
+        '```json\n{"tool_call": {"name": "add", "args": {"a": 3, "b": 4}}}\n```',
+        "Result is 7. Done.",
+    ])
+    tool = AddTool()
+    bb = _bb(tmp_path)
+    d = Dispatcher(model, tools=[tool], blackboard=bb, system_prompt="sys", max_steps=5)
+    r = d.run("compute 3 + 4")
+
+    assert d._text_tool_fallback is True
+    assert r.stop_reason == "finished"
+    assert any(inv["name"] == "add" and inv["ok"] for inv in r.tool_invocations)
+    fallback_events = [e for e in bb.events if e["message"] == "text_tool_fallback"]
+    assert len(fallback_events) == 1
