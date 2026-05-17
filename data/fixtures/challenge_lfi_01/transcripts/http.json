@@ -1,0 +1,14 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "landing page with link to /poems/"},
+    {"method": "GET", "path": "/poems/", "notes": "displays poem selection form with buttons for poem1.txt, poem2.txt, poem3.txt"},
+    {"method": "GET", "path": "/poems/?poem=poem1.txt", "notes": "displays content of poem1.txt inside <pre> tags"},
+    {"method": "GET", "path": "/poems/?poem=poem2.txt", "notes": "displays content of poem2.txt inside <pre> tags"}
+  ],
+  "observations": [
+    "GET /poems/?poem=<filename> returns file contents rendered in <pre> tags.",
+    "The poem parameter controls which file is read and displayed.",
+    "Source code shows PHP file_get_contents() called directly on user input with no validation or path restriction.",
+    "A flag.txt file exists in the parent directory of the poems folder."
+  ]
+}

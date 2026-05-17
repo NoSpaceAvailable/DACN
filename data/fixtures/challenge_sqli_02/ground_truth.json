@@ -1,0 +1,11 @@
+{
+  "expected_vulnerability": "SQLi",
+  "severity": "Critical",
+  "oracle": "auth_bypass_via_filtered_sqli",
+  "poc": {
+    "method": "POST",
+    "path": "/login",
+    "body_fields": ["username", "password"],
+    "indicator": "sqli_with_filter_bypass"
+  }
+}

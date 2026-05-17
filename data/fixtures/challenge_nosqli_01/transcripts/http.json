@@ -1,0 +1,14 @@
+{
+  "routes": [
+    {"method": "RPC", "path": "notes.count(filter)", "notes": "Meteor method; returns count of notes matching the filter object"},
+    {"method": "RPC", "path": "notes.add()", "notes": "creates a new note for authenticated user"},
+    {"method": "RPC", "path": "notes.remove(id)", "notes": "removes a note owned by authenticated user"}
+  ],
+  "observations": [
+    "The notes.count method accepts an arbitrary filter object from the client.",
+    "The filter parameter is passed directly to MongoDB's Notes.find(filter) without validation.",
+    "MongoDB query operators like $regex can be injected via the filter parameter.",
+    "The database is seeded with notes from multiple owners, including notes containing secrets.",
+    "By testing different $regex patterns and observing count changes, an attacker can extract note contents character by character."
+  ]
+}

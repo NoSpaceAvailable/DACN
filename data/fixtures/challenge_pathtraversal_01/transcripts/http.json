@@ -1,0 +1,15 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "returns landing page for ransomware decryption service"},
+    {"method": "POST", "path": "/decrypt", "notes": "decrypts data; requires key_id header and 'paid' flag in key record"},
+    {"method": "GET", "path": "/admin/key", "notes": "returns encryption key JSON; blocked by nginx 'deny all' on /admin/ location"}
+  ],
+  "observations": [
+    "Direct requests to /admin/* return 403 Forbidden from nginx reverse proxy.",
+    "The Flask app runs behind gunicorn on a unix domain socket, proxied by nginx.",
+    "Nginx config has 'underscores_in_headers on', allowing custom headers with underscores.",
+    "Gunicorn reads WSGI environmental variables from request headers, including SCRIPT_NAME.",
+    "SCRIPT_NAME is used by WSGI to calculate the application path_info; manipulating it can change what path Flask sees.",
+    "The nginx 'location ^~ /admin/' rule only matches the start of the raw request URI, not the WSGI-computed path."
+  ]
+}

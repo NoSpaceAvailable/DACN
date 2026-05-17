@@ -1,0 +1,11 @@
+{
+  "expected_vulnerability": "NoSQLi",
+  "severity": "High",
+  "oracle": "data_exfiltration_via_nosql_query",
+  "poc": {
+    "method": "RPC",
+    "rpc_method": "notes.count",
+    "body_field": "filter",
+    "indicator": "mongodb_operator_injection"
+  }
+}
