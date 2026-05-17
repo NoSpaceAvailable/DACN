@@ -38,8 +38,6 @@ def run_eval_case(
     request_timeout_s: int,
     temperature: float,
     num_ctx: int,
-    num_predict: int,
-    repeat_penalty: float,
 ) -> Dict[str, Any]:
     if config_name not in ABLATION_CONFIGS:
         raise ValueError(f"Unknown config {config_name!r}; expected one of {sorted(ABLATION_CONFIGS)}")
@@ -50,15 +48,11 @@ def run_eval_case(
         base_url=base_url,
         temperature=temperature,
         num_ctx=num_ctx,
-        num_predict=num_predict,
-        repeat_penalty=repeat_penalty,
         timeout=request_timeout_s,
     )
     default_options = {
         "temperature": temperature,
         "num_ctx": num_ctx,
-        "num_predict": num_predict,
-        "repeat_penalty": repeat_penalty,
     }
     ollama_config = OllamaConfig(
         base_url=base_url,
@@ -115,9 +109,6 @@ def run_eval_case(
     }
     if error:
         row["error"] = error[:1000]
-    final_text = summary.get("final_text", "") or ""
-    if row["tool_calls"] == 0 and final_text:
-        row["final_text_preview"] = final_text[:300]
     return row
 
 
@@ -129,11 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", default="http://127.0.0.1:11434")
     parser.add_argument("--outputs-root", required=True)
     parser.add_argument("--max-steps", type=int, default=15)
-    parser.add_argument("--request-timeout-s", type=int, default=600)
+    parser.add_argument("--request-timeout-s", type=int, default=300)
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--num-ctx", type=int, default=8192)
-    parser.add_argument("--num-predict", type=int, default=768)
-    parser.add_argument("--repeat-penalty", type=float, default=1.1)
     parser.add_argument("--row-out", default=None, help="Optional path to write the JSON row.")
     return parser
 
@@ -150,8 +139,6 @@ def main() -> int:
         request_timeout_s=args.request_timeout_s,
         temperature=args.temperature,
         num_ctx=args.num_ctx,
-        num_predict=args.num_predict,
-        repeat_penalty=args.repeat_penalty,
     )
     text = json.dumps(row, ensure_ascii=False)
     if args.row_out:

@@ -115,14 +115,13 @@ def test_generate_merges_default_options_with_call_options():
         _profile(),
         base_url="http://x",
         model_name="g",
-        default_options={"num_ctx": 8192, "num_predict": 768, "temperature": 0.2},
+        default_options={"num_ctx": 8192, "temperature": 0.2},
     )
     with patch("vapt_orchestrator_safe.llm.ollama_model.requests.post") as post:
         post.return_value = _FakeResponse(200, payload)
         model.generate("hi", options={"temperature": 0.0})
     assert post.call_args.kwargs["json"]["options"] == {
         "num_ctx": 8192,
-        "num_predict": 768,
         "temperature": 0.0,
     }
 
