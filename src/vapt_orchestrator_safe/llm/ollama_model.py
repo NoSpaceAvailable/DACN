@@ -50,6 +50,7 @@ class OllamaModel(BaseModel):
         model_name: str,
         token: Optional[str] = None,
         timeout: int = 180,
+        default_options: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__(profile)
         if not base_url:
@@ -60,6 +61,7 @@ class OllamaModel(BaseModel):
         self.model_name = model_name
         self.token = token
         self.timeout = timeout
+        self.default_options = dict(default_options or {})
 
     # ── BaseModel contract ──────────────────────────────────────────────────
     def summarize(self, prompt: str, metadata: Dict[str, Any] | None = None) -> str:
@@ -96,8 +98,9 @@ class OllamaModel(BaseModel):
         }
         if system:
             payload["system"] = system
-        if options:
-            payload["options"] = options
+        merged_options = {**self.default_options, **(options or {})}
+        if merged_options:
+            payload["options"] = merged_options
         if think is not None:
             payload["think"] = think
         return self._post(url, payload)
@@ -113,8 +116,9 @@ class OllamaModel(BaseModel):
             "messages": messages,
             "stream": False,
         }
-        if options:
-            payload["options"] = options
+        merged_options = {**self.default_options, **(options or {})}
+        if merged_options:
+            payload["options"] = merged_options
         return self._post(url, payload, response_field=("message", "content"))
 
     def list_tags(self) -> List[str]:

@@ -109,6 +109,24 @@ def test_generate_happy_path_records_token_counts():
     assert sent_kwargs["json"]["options"] == {"temperature": 0.0}
 
 
+def test_generate_merges_default_options_with_call_options():
+    payload = {"response": "OK", "prompt_eval_count": 0, "eval_count": 0, "total_duration": 0}
+    model = OllamaModel(
+        _profile(),
+        base_url="http://x",
+        model_name="g",
+        default_options={"num_ctx": 8192, "num_predict": 768, "temperature": 0.2},
+    )
+    with patch("vapt_orchestrator_safe.llm.ollama_model.requests.post") as post:
+        post.return_value = _FakeResponse(200, payload)
+        model.generate("hi", options={"temperature": 0.0})
+    assert post.call_args.kwargs["json"]["options"] == {
+        "num_ctx": 8192,
+        "num_predict": 768,
+        "temperature": 0.0,
+    }
+
+
 def test_summarize_wraps_generate_and_includes_label():
     payload = {"response": "the body", "prompt_eval_count": 1, "eval_count": 1, "total_duration": 0}
     model = OllamaModel(_profile(), base_url="http://x", model_name="gemma4:e2b")

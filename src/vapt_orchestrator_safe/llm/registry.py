@@ -9,7 +9,7 @@ Backend syntax (CLI `--llm` flag):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from vapt_orchestrator_safe.llm.base import BaseModel
 from vapt_orchestrator_safe.llm.fake_models import RuleBasedModel
@@ -22,6 +22,7 @@ class OllamaConfig:
     base_url: str
     token: Optional[str] = None
     timeout: int = 180
+    default_options: Optional[Dict[str, Any]] = None
 
 
 def parse_backend(spec: str) -> tuple[str, Optional[str]]:
@@ -74,4 +75,5 @@ class ModelRegistry:
             model_name=self._model_tag,
             token=self._ollama_config.token,
             timeout=self._ollama_config.timeout,
+            default_options=self._ollama_config.default_options,
         )
