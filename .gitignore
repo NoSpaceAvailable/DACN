@@ -11,3 +11,5 @@ outputs/*
 .env.local
 notes/_*.txt
 notes/_*.pdf
+chat.md
+codex.md
