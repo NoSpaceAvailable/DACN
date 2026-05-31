@@ -38,27 +38,34 @@ def run_eval_case(
     request_timeout_s: int,
     temperature: float,
     num_ctx: int,
+    provider: str = "ollama",
 ) -> Dict[str, Any]:
     if config_name not in ABLATION_CONFIGS:
         raise ValueError(f"Unknown config {config_name!r}; expected one of {sorted(ABLATION_CONFIGS)}")
 
-    backend_spec = f"ollama:{model}"
-    chat_model = build_chat_model(
-        backend_spec,
-        base_url=base_url,
-        temperature=temperature,
-        num_ctx=num_ctx,
-        timeout=request_timeout_s,
-    )
-    default_options = {
-        "temperature": temperature,
-        "num_ctx": num_ctx,
-    }
-    ollama_config = OllamaConfig(
-        base_url=base_url,
-        timeout=request_timeout_s,
-        default_options=default_options,
-    )
+    backend_spec = f"{provider}:{model}"
+
+    if provider == "ollama":
+        chat_model = build_chat_model(
+            backend_spec,
+            base_url=base_url,
+            temperature=temperature,
+            num_ctx=num_ctx,
+            timeout=request_timeout_s,
+        )
+        ollama_config: OllamaConfig | None = OllamaConfig(
+            base_url=base_url,
+            timeout=request_timeout_s,
+            default_options={"temperature": temperature, "num_ctx": num_ctx},
+        )
+    else:
+        chat_model = build_chat_model(
+            backend_spec,
+            temperature=temperature,
+            timeout=request_timeout_s,
+        )
+        ollama_config = None
+
     runner = DispatcherRunner(
         outputs_root=outputs_root,
         backend=backend_spec,
@@ -118,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture", required=True)
     parser.add_argument("--config", required=True, choices=sorted(ABLATION_CONFIGS))
     parser.add_argument("--base-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--provider", default="ollama", help="Backend provider: ollama, custom, openai, anthropic, openrouter")
     parser.add_argument("--outputs-root", required=True)
     parser.add_argument("--max-steps", type=int, default=15)
     parser.add_argument("--request-timeout-s", type=int, default=300)
@@ -139,6 +147,7 @@ def main() -> int:
         request_timeout_s=args.request_timeout_s,
         temperature=args.temperature,
         num_ctx=args.num_ctx,
+        provider=args.provider,
     )
     text = json.dumps(row, ensure_ascii=False)
     if args.row_out:
