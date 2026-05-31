@@ -46,13 +46,17 @@ class ModelRegistry:
     ) -> None:
         self._profiles = profiles
         kind, model_tag = parse_backend(backend)
-        if kind not in {"rule", "ollama"}:
-            raise ValueError(f"Unknown LLM backend '{kind}'. Expected 'rule' or 'ollama:<tag>'.")
         if kind == "ollama":
             if not model_tag:
                 raise ValueError("ollama backend requires a model tag, e.g. ollama:gemma4:e2b")
             if ollama_config is None:
                 raise ValueError("ollama backend requires ollama_config (set OLLAMA_BASE_URL)")
+        elif kind not in {"rule", "ollama"}:
+            # API-based backends (custom, openai, anthropic, openrouter) are
+            # handled by the dispatcher's ChatModel, not by sub-agent registry.
+            # Treat them like "rule" for the sub-agent path so the runner can
+            # still construct the registry without crashing.
+            kind = "rule"
         self._kind = kind
         self._model_tag = model_tag
         self._ollama_config = ollama_config
