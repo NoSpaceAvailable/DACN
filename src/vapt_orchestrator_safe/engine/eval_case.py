@@ -63,6 +63,7 @@ def run_eval_case(
             backend_spec,
             temperature=temperature,
             timeout=request_timeout_s,
+            max_retries=5,
         )
         ollama_config = None
 
