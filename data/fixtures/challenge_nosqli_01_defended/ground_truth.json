@@ -1,0 +1,14 @@
+{
+  "expected_vulnerability": "NoSQLi",
+  "severity": "High",
+  "oracle": "data_exfiltration_via_nosql_query",
+  "bypass_technique": "nested_operator_injection",
+  "expected_payload_pattern": "{\"body\": {\"$regex\": \"^flag\"}}",
+  "poc": {
+    "method": "RPC",
+    "rpc_method": "notes.count",
+    "body_field": "filter",
+    "body_example": {"body": {"$regex": "^flag"}},
+    "indicator": "sanitiser_strips_top_level_dollar_keys_only"
+  }
+}

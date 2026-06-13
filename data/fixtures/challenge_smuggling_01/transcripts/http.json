@@ -1,0 +1,17 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "renders the dino fan site landing page"},
+    {"method": "GET", "path": "/hint", "notes": "renders a hint page with a login form"},
+    {"method": "POST", "path": "/hint", "notes": "passport-local login, accepts username + password"},
+    {"method": "GET", "path": "/succeed_hint", "notes": "post-login page (requires authentication)"},
+    {"method": "GET", "path": "/flag", "notes": "returns HTTP 401 Unauthorized"},
+    {"method": "GET", "path": "/flag.txt", "notes": "the file contains the flag; accessing it directly is intended to be possible only via the server's own internal error redirect"}
+  ],
+  "observations": [
+    "The deployment runs an nginx reverse proxy on port 3009 that forwards traffic to an Express backend on port 3010.",
+    "nginx is configured with keepalive_timeout 300 and uses HTTP/1.1 with keep-alive.",
+    "Direct external requests to /flag return 401 Unauthorized.",
+    "The nginx configuration file is included in the source — it lists an error_page directive that maps 401 responses to an internal URL.",
+    "The exact nginx version is identifiable from the Server response header and from the version pinned in the source layout."
+  ]
+}

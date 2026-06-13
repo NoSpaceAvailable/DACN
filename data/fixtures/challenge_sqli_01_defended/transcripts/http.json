@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/login", "notes": "form fields: username, password. Returns {ok: true|false}."}
+  ],
+  "observations": [
+    "POST /login with form-encoded body containing username and password returns {ok: true} on valid credentials, {ok: false} otherwise.",
+    "Some malformed inputs return HTTP 400 with body 'WAF: forbidden token in username'."
+  ]
+}

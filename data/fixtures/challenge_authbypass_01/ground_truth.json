@@ -1,0 +1,18 @@
+{
+  "expected_vulnerability": "Auth Bypass",
+  "severity": "Critical",
+  "oracle": "protected_endpoint_returns_flag",
+  "bypass_technique": "jwt_secret_extracted_from_token_payload_then_forged",
+  "expected_payload_pattern": "Forge JWT with {type:'admin'} signed using the secret leaked in /oauth2/token response payload.",
+  "poc": {
+    "steps": [
+      "Login to obtain a session (POST /login with any username/password).",
+      "POST /oauth2/authorize with response_type=code, client_id=X, redirect_uri=Y to obtain a code (JWT).",
+      "POST /oauth2/token with grant_type=authorization_code + matching client_id/redirect_uri/code. Response contains a JWT whose payload includes the field `secret` = process.env.JWT_SECRET.",
+      "Decode the response JWT (base64), read the `secret` field.",
+      "Forge a new JWT with payload {type: 'admin'} signed using the leaked secret (HS256).",
+      "GET /protected with header `Authorization: Bearer <forged_jwt>` → returns the flag."
+    ],
+    "indicator": "token_endpoint_signs_jwt_whose_payload_contains_the_signing_key"
+  }
+}

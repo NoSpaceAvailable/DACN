@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/api/webhook/preview", "notes": "Accepts JSON {url: ...}. Server fetches the URL and returns response metadata."}
+  ],
+  "observations": [
+    "POST /api/webhook/preview with body {\"url\": \"http://example.com\"} returns the fetched page metadata (status, size, title).",
+    "Some target URLs are rejected with HTTP 400 and body 'blocked: internal host'."
+  ]
+}
