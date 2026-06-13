@@ -73,25 +73,26 @@ _DEFAULT_FIXTURES = [
 
 # ─────────────────────────── Input builder ────────────────────────────────
 
-def _sanitised_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
-    drop = {"id", "title", "fixture_id", "name", "notes"}
-    return {k: v for k, v in manifest.items() if k not in drop}
-
-
 def _build_user_input(
     manifest: Dict[str, Any],
     transcript: Dict[str, Any],
     source_files: List[Dict[str, Any]],
 ) -> str:
+    """Render the input a CTF player would see: one-line description + the
+    HTTP transcript + the source-code handout.
+
+    Everything else in the manifest (id, title, skills, difficulty, mode,
+    notes, ...) is deliberately omitted — those fields can leak the
+    intended attack family. The challenge description is a vague hook
+    matching the framing real CTFs give players.
+    """
+    description = str(manifest.get("description") or "Web application security challenge.")
+
     parts: List[str] = [
         "MODE: JSON",
         "",
-        "Analyze the target below and identify the vulnerability.",
-        "",
-        "## Target Profile",
-        "```json",
-        json.dumps(_sanitised_manifest(manifest), indent=2, ensure_ascii=False),
-        "```",
+        "## Challenge",
+        description,
         "",
         "## HTTP Transcript",
         "```json",

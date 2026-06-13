@@ -40,15 +40,6 @@ def decrypt():
 
     return cipher.decrypt(data)
 
-# === CL Review Comments - 5a7b3f
-# <Alex> Is this safe?
-# <Brad> Yes, because we have `deny all` in nginx.
-# <Alex> Are you sure there won't be any way to get around it?
-# <Brad> Here, I wrote a better description in the nginx config, hopefully that will help
-# <Brad> Plus we had our code audited after they stole our coins last time
-# <Alex> What about dependencies?
-# <Brad> You are over thinking it. no one is going to be looking. everyone we encrypt is so bad at security they would never be able to find a bug in a library like that
-# ===
 @app.route('/admin/key')
 def get_key():
     return jsonify(key=get_info()['key'])

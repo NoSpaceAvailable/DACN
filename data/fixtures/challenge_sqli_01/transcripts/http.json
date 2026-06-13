@@ -1,10 +1,8 @@
 {
   "routes": [
-    {"method": "POST", "path": "/login", "notes": "takes username and password fields"}
+    {"method": "POST", "path": "/login", "notes": "takes username and password form fields; returns {ok: true|false}"}
   ],
   "observations": [
-    "Login fails for invalid credentials.",
-    "Source inspection is available in this fixture.",
-    "Error handling is generic; exploitability must be reasoned from code evidence."
+    "Login returns {ok: true} on valid credentials and {ok: false} otherwise."
   ]
 }

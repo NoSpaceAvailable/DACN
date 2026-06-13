@@ -67,35 +67,22 @@ _DEFAULT_FIXTURES = [
 ]
 
 
-def _sanitised_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
-    """Strip fixture-identifying fields so the model does not put them into
-    file_search queries (HackTricks is indexed by generic concepts, not fixture
-    IDs / titles)."""
-    drop = {"id", "title", "fixture_id", "name", "notes"}
-    return {k: v for k, v in manifest.items() if k not in drop}
-
-
 def _build_user_input(
     fixture_name: str,  # noqa: ARG001 — intentionally not used in input
     manifest: Dict[str, Any],
     transcript: Dict[str, Any],
     source_files: List[Dict[str, Any]],
 ) -> str:
-    """Compose the user message that triggers JSON mode in the Studio prompt.
-
-    The fixture name and identifying manifest fields are deliberately omitted
-    so the model formulates file_search queries from conceptual keywords
-    (vuln class, technique) rather than fixture-specific tokens.
+    """Render the input a CTF player would see: one-line description + the
+    HTTP transcript + the source-code handout. Everything else in the
+    manifest is omitted to avoid leaking the intended attack family.
     """
+    description = str(manifest.get("description") or "Web application security challenge.")
     parts: List[str] = [
         "MODE: JSON",
         "",
-        "Analyze the target below and identify the vulnerability.",
-        "",
-        "## Target Profile",
-        "```json",
-        json.dumps(_sanitised_manifest(manifest), indent=2, ensure_ascii=False),
-        "```",
+        "## Challenge",
+        description,
         "",
         "## HTTP Transcript",
         "```json",

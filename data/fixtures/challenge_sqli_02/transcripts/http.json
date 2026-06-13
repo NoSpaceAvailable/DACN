@@ -2,14 +2,11 @@
   "routes": [
     {"method": "GET", "path": "/", "notes": "redirects to /login"},
     {"method": "GET", "path": "/login", "notes": "displays login form with username and password fields"},
-    {"method": "POST", "path": "/login", "notes": "authenticates user; redirects to /home on success, back to /login on failure"},
-    {"method": "GET", "path": "/home", "notes": "protected page, requires session authentication"}
+    {"method": "POST", "path": "/login", "notes": "authenticates the user; redirects to /home on success, back to /login on failure"},
+    {"method": "GET", "path": "/home", "notes": "protected page requiring a valid session"}
   ],
   "observations": [
-    "Login form accepts username and password via POST request.",
-    "Authentication error message is generic: 'Authentication failed.'",
-    "Source inspection reveals two input sanitization functions applied before the SQL query.",
-    "The SQL query uses ES6 template literal string interpolation, not parameterized queries.",
-    "Password is SHA-256 hashed before query, but username is inserted directly after filtering."
+    "Login form accepts username and password via POST.",
+    "Authentication error message is generic: 'Authentication failed.'"
   ]
 }

@@ -1,16 +1,14 @@
 {
   "routes": [
-    {"method": "GET", "path": "/", "notes": "landing page mentioning SSO + hints at /oauth2/token and /oauth2/authorize POST endpoints"},
+    {"method": "GET", "path": "/", "notes": "landing page mentioning the OAuth endpoints"},
     {"method": "GET", "path": "/login", "notes": "renders a login form"},
-    {"method": "POST", "path": "/login", "notes": "accepts username + password, sets session.type='user'"},
-    {"method": "POST", "path": "/oauth2/authorize", "notes": "with session cookie + form fields client_id, redirect_uri, response_type=code, state — redirects to redirect_uri with ?code=<jwt>&state=<...>"},
-    {"method": "POST", "path": "/oauth2/token", "notes": "with grant_type=authorization_code + client_id + redirect_uri + code — returns {token_type: 'Bearer', token: '<jwt>'}"},
-    {"method": "GET", "path": "/protected", "notes": "requires Authorization: Bearer <jwt> where the JWT payload has type='admin'. Returns the flag if access is granted, otherwise 401."}
+    {"method": "POST", "path": "/login", "notes": "accepts username + password and creates a session"},
+    {"method": "POST", "path": "/oauth2/authorize", "notes": "OAuth2 authorize endpoint; returns a code"},
+    {"method": "POST", "path": "/oauth2/token", "notes": "OAuth2 token endpoint; exchanges a code for a Bearer JWT"},
+    {"method": "GET", "path": "/protected", "notes": "requires a Bearer JWT; returns the flag for authorised tokens"}
   ],
   "observations": [
-    "All JWTs are signed with HS256 using a single server-side secret.",
-    "POST /oauth2/token returns a Bearer JWT whose payload is base64-decodable without verification.",
-    "Login flow only ever sets ctx.session.type = 'user'; no admin login is exposed.",
-    "The /protected endpoint rejects any token whose decoded payload type is not exactly 'admin'."
+    "All JWTs are signed with HS256.",
+    "Login attempts with any non-empty username + password succeed and create a session."
   ]
 }

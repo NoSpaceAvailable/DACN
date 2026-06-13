@@ -1,12 +1,10 @@
 {
   "routes": [
-    {"method": "POST", "path": "/api/login", "notes": "returns bearer token"},
-    {"method": "GET", "path": "/api/invoices/1001", "notes": "returns own invoice"},
-    {"method": "GET", "path": "/api/invoices/1002", "notes": "returns invoice data even for other tenant when authenticated"}
+    {"method": "POST", "path": "/api/login", "notes": "returns a bearer token"},
+    {"method": "GET", "path": "/api/invoices/<invoice_id>", "notes": "returns the invoice as JSON; requires Authorization header"}
   ],
   "observations": [
-    "Authenticated requests to /api/invoices/{id} return JSON records.",
-    "Changing the invoice id from 1001 to 1002 returns another customer's email and amount.",
-    "No ownership check is visible in observed behavior."
+    "Authenticated requests to /api/invoices/{id} return JSON containing the requester id and invoice fields.",
+    "Invoice ids appear to be small integers."
   ]
 }

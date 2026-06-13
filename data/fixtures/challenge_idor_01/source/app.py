@@ -14,5 +14,4 @@ def get_invoice(invoice_id: int):
     authz = request.headers.get("Authorization", "")
     user_id = decode_user(authz)
     invoice = INVOICES[invoice_id]
-    # BUG: object is returned without checking invoice["owner_id"] == user_id
     return jsonify({"requester": user_id, "invoice": invoice})

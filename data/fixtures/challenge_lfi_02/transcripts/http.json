@@ -1,12 +1,9 @@
 {
   "routes": [
-    {"method": "GET", "path": "/?path=poem1.txt", "notes": "returns the poem file contents"},
-    {"method": "GET", "path": "/?path=../flag.txt", "notes": "returns HTTP 403 with body 'WHOA THATS BANNED!!!!'"},
-    {"method": "GET", "path": "/?path=..%2fflag.txt", "notes": "also returns HTTP 403 — the query string is URL-decoded before the substring check"}
+    {"method": "GET", "path": "/?path=poem1.txt", "notes": "returns the selected file from a backend poems directory"}
   ],
   "observations": [
-    "The frontend service on port 9999 proxies the path query parameter to a backend HTTP server on localhost:8080 that serves a poems directory.",
-    "A flag.txt file is known to exist one directory above the poems folder served by the backend.",
-    "The frontend rejects requests whose decoded path query contains '..' or the fullwidth equivalent 'ＮＮ'."
+    "The frontend on port 9999 proxies the path query parameter to a backend HTTP server on localhost:8080.",
+    "Some inputs return HTTP 403 with body 'WHOA THATS BANNED!!!!'."
   ]
 }
