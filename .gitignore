@@ -14,3 +14,5 @@ notes/_*.pdf
 chat.md
 codex.md
 data/corpus/*.done
+.vscode/*
+NYU_CTF_Bench-main/*
