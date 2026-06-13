@@ -61,6 +61,7 @@ from vapt_orchestrator_safe.tools.agent_tools import (
     InvokeSignatureTool,
     PivotTool,
 )
+from vapt_orchestrator_safe.tools.analysis_tools import ReadSourceTool, RecordFindingTool
 from vapt_orchestrator_safe.tools.kg_tools import QueryKGTool, QueryRAGTool
 from vapt_orchestrator_safe.tools.sandbox_exec import RunPythonInSandboxTool
 from vapt_orchestrator_safe.tools.security import (
@@ -108,6 +109,7 @@ class DispatcherRunner:
         mid_thinking_focus: Optional[List[str]] = None,
         mid_thinking_max_drift_chars: int = 1200,
         require_report: bool = True,
+        enable_source_analysis: bool = True,
     ):
         loaded = load_profiles(profiles_path)
         if profile_set_name not in loaded.profile_sets:
@@ -141,6 +143,7 @@ class DispatcherRunner:
         self.enable_specialized_tools = enable_specialized_tools
         self.enable_mid_thinking = enable_mid_thinking
         self.require_report = require_report
+        self.enable_source_analysis = enable_source_analysis
         self.mid_thinking_focus = mid_thinking_focus or []
         self.mid_thinking_max_drift_chars = mid_thinking_max_drift_chars
 
@@ -200,6 +203,13 @@ class DispatcherRunner:
             ),
             PivotTool(),
         ]
+
+        # LLM-driven source analysis (family-agnostic detection). Lets the
+        # dispatcher read the real source and record findings of any class,
+        # instead of relying on the 3 hardcoded heuristic families.
+        if self.enable_source_analysis:
+            tools.append(ReadSourceTool())
+            tools.append(RecordFindingTool())
 
         # Only attach security tools when the fixture opts in via a manifest scope
         # block. Static source-only fixtures (challenge_idor_01 etc.) never need
@@ -343,6 +353,8 @@ class DispatcherRunner:
     ) -> Dict[str, Any]:
         report_ctx = blackboard.get_phase_context("report")
         exploit_ctx = blackboard.get_phase_context("exploit")
+        findings_ctx = blackboard.get_phase_context("findings") or {}
+        llm_findings = findings_ctx.get("items", [])
         validations = exploit_ctx.get("validations") or []
         validated = [v for v in validations if v.status in {"verified", "supported"}]
         overall = (
@@ -363,6 +375,7 @@ class DispatcherRunner:
             "steps": result.steps,
             "tool_invocations": result.tool_invocations,
             "watchdog_trips": watchdog_trips or [],
+            "llm_findings": llm_findings,
             "final_text": result.final_text,
             "validated_findings": [
                 {

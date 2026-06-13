@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/auth/login", "notes": "form username+password; returns access_token (JWT) on success"},
+    {"method": "POST", "path": "/auth/forgot_password", "notes": "form email; INTERNAL-marked but reachable; returns the reset token in the JSON response"},
+    {"method": "POST", "path": "/auth/update_password", "notes": "form username+token+new_password; sets a new password if the reset token matches"},
+    {"method": "POST", "path": "/process/debug", "notes": "ADMIN-marked; requires Bearer token; echoes request headers/form/body"},
+    {"method": "POST", "path": "/process/documents", "notes": "ADMIN-marked; requires Bearer token; form file_name; returns base64 file content from /cornhub"}
+  ],
+  "observations": [
+    "POST /auth/forgot_password with a known email returns {\"token\": ...} directly in the response body, so the reset token does not need to be guessed.",
+    "POST /auth/update_password with that token resets the target account's password (e.g. admin), enabling full account takeover.",
+    "After takeover, POST /auth/login returns a valid Bearer JWT accepted by the admin-only endpoints.",
+    "POST /process/documents applies a filter() that rejects '..' and leading '/', but then calls os.path.expandvars() on the file name AFTER the filter.",
+    "A file_name of ${HOME}/flag_1.txt passes the filter (no '..' or leading '/'), expands to an absolute path /home/appuser/flag_1.txt, and os.path.join discards the /cornhub base directory, yielding arbitrary file read outside the intended document directory."
+  ]
+}

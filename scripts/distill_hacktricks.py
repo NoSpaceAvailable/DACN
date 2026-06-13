@@ -59,7 +59,10 @@ _GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 _VULN_CLASSES = [
     "SQLi", "NoSQLi", "IDOR", "SSRF", "XSS", "RCE", "CommandInjection",
     "AuthBypass", "PathTraversal", "LFI", "RFI", "Deserialization",
-    "XXE", "SSTI", "CSRF", "OpenRedirect", "FileUpload", "JWT", "Other",
+    "XXE", "SSTI", "CSRF", "OpenRedirect", "FileUpload", "JWT",
+    "RequestSmuggling", "CachePoisoning", "CORS", "Clickjacking",
+    "CRLFInjection", "PrototypePollution", "RaceCondition", "GraphQL",
+    "WebSocket", "LDAPi", "XPath", "Other",
 ]
 
 _EXTRACT_PROMPT = """You are a security-knowledge distiller. Read the following \

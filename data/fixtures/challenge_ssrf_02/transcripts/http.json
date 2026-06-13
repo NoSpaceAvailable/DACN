@@ -1,0 +1,13 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/api/login", "notes": "returns bearer token"},
+    {"method": "POST", "path": "/api/preview", "notes": "accepts {\"url\": ...}; server fetches the URL and returns title + body snippet"},
+    {"method": "GET", "path": "/api/preview/history", "notes": "lists previously previewed links"}
+  ],
+  "observations": [
+    "POST /api/preview with a JSON body {\"url\": \"https://example.com\"} makes the server fetch that URL and return its title and a body snippet.",
+    "The url parameter is not validated against an allowlist; internal hosts and link-local addresses are reachable.",
+    "POST /api/preview with {\"url\": \"http://169.254.169.254/latest/meta-data/\"} returns cloud instance metadata in the snippet.",
+    "No egress filtering or scheme restriction is visible in observed behavior."
+  ]
+}

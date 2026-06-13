@@ -25,6 +25,8 @@ FIXTURE_FAMILY = {
     "challenge_lfi_01": "LFI",
     "challenge_nosqli_01": "NoSQLi",
     "challenge_pathtraversal_01": "PathTraversal",
+    "challenge_ssrf_02": "SSRF",
+    "challenge_cornhub_01": "LFI",
 }
 
 
@@ -64,8 +66,9 @@ def test_ablation_runs_all_configs_on_all_fixtures(tmp_path):
     # Runs = fixtures × configs.
     assert len(report.rows) == len(fixtures) * len(DEFAULT_CONFIGS)
     # Every row has the expected columns populated.
+    fixture_names = {p.name for p in fixtures}
     for row in report.rows:
-        assert row.fixture in FIXTURE_FAMILY
+        assert row.fixture in fixture_names
         assert row.config in {c.name for c in DEFAULT_CONFIGS}
         assert row.status in {"validated", "supported", "no_validated_findings", "stopped"}
         assert row.steps > 0
