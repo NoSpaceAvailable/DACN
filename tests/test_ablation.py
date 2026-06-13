@@ -21,6 +21,10 @@ FIXTURE_FAMILY = {
     "challenge_idor_01": "IDOR",
     "challenge_ssrf_01": "SSRF",
     "challenge_sqli_01": "SQLi",
+    "challenge_sqli_02": "SQLi",
+    "challenge_lfi_01": "LFI",
+    "challenge_nosqli_01": "NoSQLi",
+    "challenge_pathtraversal_01": "PathTraversal",
 }
 
 

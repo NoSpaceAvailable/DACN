@@ -310,3 +310,53 @@ def test_dispatcher_adaptive_fallback_on_misplaced_tool_call(tmp_path):
     adaptive_events = [e for e in bb.events if e["message"] == "text_tool_fallback_adaptive"]
     assert len(adaptive_events) == 1
     assert adaptive_events[0]["data"]["rescued_tool"] == "add"
+
+
+# ── completion guard (require_report) ──────────────────────────────────────
+class ReportTool(BaseTool):
+    name: str = "invoke_report"
+    description: str = "Emit the final report."
+    args_schema: Type[BaseModel] = _NoArgs
+
+    def _invoke(self, **kwargs: Any) -> ToolResult:
+        return ToolResult(stdout="report written")
+
+
+def test_completion_guard_nudges_when_finishing_without_report(tmp_path):
+    # Model tries to finish immediately (no tools), then after the nudge it
+    # calls invoke_report and finishes for real.
+    chat = _ScriptedChatModel([
+        AIMessage(content="I think we're done.", tool_calls=[]),
+        AIMessage(content="", tool_calls=[{"id": "r1", "name": "invoke_report", "args": {}}]),
+        AIMessage(content="Report emitted; no validated finding.", tool_calls=[]),
+    ])
+    bb = _bb(tmp_path)
+    d = Dispatcher(chat, tools=[ReportTool()], blackboard=bb, system_prompt="sys",
+                   max_steps=6, require_report=True)
+    r = d.run("go")
+    assert r.stop_reason == "finished"
+    assert any(inv["name"] == "invoke_report" and inv["ok"] for inv in r.tool_invocations)
+    assert any(e["message"].endswith("completion_nudge") for e in bb.events)
+
+
+def test_completion_guard_stops_nudging_after_budget(tmp_path):
+    # Model refuses to ever call invoke_report; guard nudges max_completion_nudges
+    # times then accepts the finish instead of looping forever.
+    chat = _ScriptedChatModel([AIMessage(content="done", tool_calls=[]) for _ in range(5)])
+    bb = _bb(tmp_path)
+    d = Dispatcher(chat, tools=[ReportTool()], blackboard=bb, system_prompt="sys",
+                   max_steps=6, require_report=True, max_completion_nudges=2)
+    r = d.run("go")
+    assert r.stop_reason == "finished"
+    nudges = [e for e in bb.events if e["message"].endswith("completion_nudge")]
+    assert len(nudges) == 2
+
+
+def test_completion_guard_off_by_default(tmp_path):
+    # Without require_report, an immediate no-tool response finishes at once.
+    chat = _ScriptedChatModel([AIMessage(content="done", tool_calls=[])])
+    bb = _bb(tmp_path)
+    d = Dispatcher(chat, tools=[ReportTool()], blackboard=bb, system_prompt="sys", max_steps=6)
+    r = d.run("go")
+    assert r.stop_reason == "finished"
+    assert r.steps == 1

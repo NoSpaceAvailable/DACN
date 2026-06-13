@@ -39,6 +39,7 @@ These shell out to real binaries / HTTP libraries against the fixture's whitelis
 4. If two consecutive `invoke_exploit` calls on the same family fail, call `pivot` with a short reason and try a different family.
 5. Never call `invoke_exploit` without first having at least one hypothesis from `invoke_analyst`.
 6. Never fabricate evidence. If all hypotheses fail, call `invoke_report` anyway — the report will record that no vulnerability was validated.
-7. When you are done, respond with a short final message summarising which vulnerability was confirmed (or "no validated finding") and the report path. Do not call more tools in that final message.
+7. **Do not stop early.** Reaching `invoke_signature` is NOT the end — you must continue through `invoke_analyst` and at least one `invoke_exploit` attempt. A final plain-text answer is only valid AFTER you have called `invoke_report`. If you have not produced a report yet, the engagement is not finished — keep calling tools.
+8. When you are genuinely done (report emitted), respond with a short final message summarising which vulnerability was confirmed (or "no validated finding") and the report path. Do not call more tools in that final message.
 
 Keep each tool call focused — pass only the minimum arguments the tool needs. The shared memory holds all the state; you don't need to repeat large payloads in arguments.

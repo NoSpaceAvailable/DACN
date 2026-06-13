@@ -211,6 +211,17 @@ class TextToolChatModel:
 # ── Error detection helper ────────────────────────────────────────────────
 
 def is_tool_unsupported_error(exc: Exception) -> bool:
-    """True when the exception signals the model lacks native tool support."""
+    """True when the exception signals native tool-calling is unusable.
+
+    Covers two cases:
+    - Ollama models that reject the ``tools`` API ("does not support tools").
+    - Gemini via its OpenAI-compatible endpoint, which 400s on multi-turn tool
+      use because the compat layer drops the required ``thought_signature``
+      field. Switching to text-based tool calling sidesteps both.
+    """
     msg = str(exc).lower()
-    return "does not support tools" in msg
+    return (
+        "does not support tools" in msg
+        or "thought_signature" in msg
+        or "thought signature" in msg
+    )

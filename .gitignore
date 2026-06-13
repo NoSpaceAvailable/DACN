@@ -13,3 +13,4 @@ notes/_*.txt
 notes/_*.pdf
 chat.md
 codex.md
+data/corpus/*.done

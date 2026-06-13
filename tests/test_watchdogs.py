@@ -211,6 +211,7 @@ def test_runner_enables_mid_thinking_when_flag_set(tmp_path):
         max_steps=3, enable_sandbox=False,
         enable_mid_thinking=True,
         mid_thinking_max_drift_chars=50_000,  # effectively off — just wiring check
+        require_report=False,  # wiring check only; don't nudge the short script
     ).run_fixture(fixture)
 
     import json
