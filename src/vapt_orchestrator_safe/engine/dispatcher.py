@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -107,6 +108,13 @@ class Dispatcher:
         watchdogs: Optional[Sequence[Watchdog]] = None,
         require_report: bool = False,
         max_completion_nudges: int = 2,
+        call_delay_s: float = 0.0,
+        require_source_read: bool = False,
+        rate_limit_retries: int = 4,
+        rate_limit_backoff_s: float = 30.0,
+        history_compaction: bool = True,
+        keep_recent_tool_msgs: int = 3,
+        compact_over_chars: int = 800,
     ):
         self._raw_chat_model = chat_model
         self._tools_list = list(tools)
@@ -123,6 +131,13 @@ class Dispatcher:
         self.require_report = require_report
         self.max_completion_nudges = max_completion_nudges
         self._completion_nudges = 0
+        self.call_delay_s = call_delay_s
+        self.require_source_read = require_source_read
+        self.rate_limit_retries = rate_limit_retries
+        self.rate_limit_backoff_s = rate_limit_backoff_s
+        self.history_compaction = history_compaction
+        self.keep_recent_tool_msgs = keep_recent_tool_msgs
+        self.compact_over_chars = compact_over_chars
 
         for tool in tools:
             if hasattr(tool, "bind_blackboard"):
@@ -166,6 +181,14 @@ class Dispatcher:
                 f"step.{step}.invoke",
                 {"message_count": len(messages)},
             )
+            # Shrink stale tool outputs so each request stays lean (they would
+            # otherwise be resent in full on every step).
+            self._compact_history(messages)
+            # Pace LLM calls to stay under free-tier rate limits (RPM). The
+            # sub-agents are rule-based and make no API calls, so the
+            # dispatcher's per-step call is the only thing to throttle.
+            if self.call_delay_s and step > 1:
+                time.sleep(self.call_delay_s)
             response, intervened = self._call_llm(messages)
             if not isinstance(response, AIMessage):
                 response = AIMessage(
@@ -193,24 +216,16 @@ class Dispatcher:
                         tool_calls=tool_calls,
                     )
                     messages[-1] = response
-                elif self._should_nudge_for_report(invocations):
-                    # Completion guard: a weak model may try to "finish" with a
-                    # plain-text answer before running the exploit / validation /
-                    # report stages. Nudge it back into the pipeline a bounded
-                    # number of times instead of accepting the premature stop.
+                elif (nudge := self._completion_nudge(invocations)) is not None:
+                    # Completion guard: don't accept a premature finish. Nudge the
+                    # model back to read the source / produce a report, a bounded
+                    # number of times. Robust to weak prompt adherence.
                     self._completion_nudges += 1
                     self.blackboard.log_event(
                         "dispatcher", f"step.{step}.completion_nudge",
                         {"nudge": self._completion_nudges},
                     )
-                    self._pending_correction = (
-                        "You stopped before completing the engagement, and you have "
-                        "NOT called invoke_report yet — so there is no final report. "
-                        "Do not give a final answer now. Continue the pipeline: if you "
-                        "have no hypotheses yet call invoke_analyst, then call "
-                        "invoke_exploit on your highest-confidence hypothesis, and only "
-                        "finish AFTER calling invoke_report."
-                    )
+                    self._pending_correction = nudge
                     continue
                 else:
                     self.blackboard.log_event(
@@ -286,14 +301,32 @@ class Dispatcher:
         )
 
 
-    def _should_nudge_for_report(self, invocations: Sequence[Dict[str, Any]]) -> bool:
-        """True when the model wants to finish but hasn't produced a report yet
-        and we still have completion-nudge budget left."""
-        if not self.require_report:
-            return False
+    def _completion_nudge(self, invocations: Sequence[Dict[str, Any]]) -> Optional[str]:
+        """Return a corrective nudge if the model tries to finish prematurely, or
+        None to allow the finish. Bounded by ``max_completion_nudges``.
+
+        Two guards: (1) if source analysis is required but the model never read
+        the source, push it to analyse the code; (2) if a report is required but
+        never produced, push it to finish the pipeline."""
         if self._completion_nudges >= self.max_completion_nudges:
-            return False
-        return not any(inv.get("name") == "invoke_report" for inv in invocations)
+            return None
+        names = {inv.get("name") for inv in invocations}
+        if self.require_source_read and "read_source" not in names:
+            return (
+                "You are about to finish without reading the target source code. "
+                "Source analysis is your PRIMARY job: call read_source (no args to "
+                "list files, then path=<file> to read each one), reason about the "
+                "code, and call record_finding for every vulnerability you find — of "
+                "ANY class. Do this before finishing."
+            )
+        if self.require_report and "invoke_report" not in names:
+            return (
+                "You stopped before completing the engagement, and you have NOT "
+                "called invoke_report yet — so there is no final report. Do not give "
+                "a final answer now. Record any remaining findings, then call "
+                "invoke_report to finish."
+            )
+        return None
 
     # ── adaptive rescue ──────────────────────────────────────────────────
     def _try_rescue_tool_call(
@@ -331,35 +364,78 @@ class Dispatcher:
         self._text_tool_fallback = True
         return parsed
 
+    def _compact_history(self, messages: List[BaseMessage]) -> None:
+        """Shrink stale tool outputs in place to keep each request lean.
+
+        Every step resends the whole conversation, so large tool results (source
+        dumps, scan output) otherwise get re-sent N times. We keep the most
+        recent ``keep_recent_tool_msgs`` tool results full (the model is actively
+        using them) and replace older oversized ones with a short stub. The full
+        output still lives on the Blackboard artifacts."""
+        if not self.history_compaction:
+            return
+        tool_idxs = [i for i, m in enumerate(messages) if isinstance(m, ToolMessage)]
+        stale = tool_idxs[:-self.keep_recent_tool_msgs] if self.keep_recent_tool_msgs else tool_idxs
+        for i in stale:
+            m = messages[i]
+            content = m.content if isinstance(m.content, str) else str(m.content)
+            if len(content) > self.compact_over_chars and not content.startswith("[omitted"):
+                messages[i] = ToolMessage(
+                    content=f"[omitted {len(content)} chars of earlier tool output to save context]",
+                    tool_call_id=getattr(m, "tool_call_id", "compacted"),
+                )
+
+    @staticmethod
+    def _is_rate_limit(exc: Exception) -> bool:
+        s = str(exc).lower()
+        return "429" in s or "rate limit" in s or "rate_limited" in s or "quota" in s
+
     # ── LLM invocation with optional streaming + watchdogs ──────────────
     def _call_llm(self, messages: List[BaseMessage]) -> Tuple[AIMessage, bool]:
         """Invoke the chat model. When watchdogs are configured, stream the
         response and run each watchdog after every chunk. On trip, log the
         event, queue a correction for the next turn, and return (partial,
-        intervened=True). Otherwise return (full_response, False)."""
-        try:
-            return self._call_llm_inner(messages)
-        except Exception as exc:
-            if not self._text_tool_fallback:
-                from vapt_orchestrator_safe.llm.text_tool_wrapper import (
-                    TextToolChatModel,
-                    is_tool_unsupported_error,
-                )
-                if is_tool_unsupported_error(exc):
-                    logger.warning(
-                        "Model does not support native tool-calling; "
-                        "switching to text-based fallback."
+        intervened=True). Otherwise return (full_response, False).
+
+        Survives transient rate-limit (429) errors by backing off and retrying
+        the same call, so a free-tier-throttled run completes (slowly) instead
+        of dying mid-pipeline."""
+        rl_attempts = 0
+        while True:
+            try:
+                return self._call_llm_inner(messages)
+            except Exception as exc:
+                if not self._text_tool_fallback:
+                    from vapt_orchestrator_safe.llm.text_tool_wrapper import (
+                        TextToolChatModel,
+                        is_tool_unsupported_error,
                     )
+                    if is_tool_unsupported_error(exc):
+                        logger.warning(
+                            "Model does not support native tool-calling; "
+                            "switching to text-based fallback."
+                        )
+                        self.blackboard.log_event(
+                            "dispatcher", "text_tool_fallback",
+                            {"reason": str(exc)},
+                        )
+                        self.chat_model = TextToolChatModel(
+                            self._raw_chat_model, self._tools_list,
+                        )
+                        self._text_tool_fallback = True
+                        continue
+                if self._is_rate_limit(exc) and rl_attempts < self.rate_limit_retries:
+                    wait = self.rate_limit_backoff_s * (2 ** rl_attempts)
                     self.blackboard.log_event(
-                        "dispatcher", "text_tool_fallback",
-                        {"reason": str(exc)},
+                        "dispatcher", "rate_limit_backoff",
+                        {"attempt": rl_attempts + 1, "wait_s": wait},
                     )
-                    self.chat_model = TextToolChatModel(
-                        self._raw_chat_model, self._tools_list,
-                    )
-                    self._text_tool_fallback = True
-                    return self._call_llm_inner(messages)
-            raise
+                    logger.warning("Rate limited; backing off %.0fs (retry %d/%d)",
+                                   wait, rl_attempts + 1, self.rate_limit_retries)
+                    time.sleep(wait)
+                    rl_attempts += 1
+                    continue
+                raise
 
     def _call_llm_inner(self, messages: List[BaseMessage]) -> Tuple[AIMessage, bool]:
         if not self.watchdogs or not hasattr(self.chat_model, "stream"):

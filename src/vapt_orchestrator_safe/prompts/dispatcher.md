@@ -28,7 +28,7 @@ These shell out to real binaries / HTTP libraries against the fixture's whitelis
 
 ## Source analysis (primary detection path)
 
-- `read_source(path?)` — read the target's ACTUAL source code. Call with no arguments first to list every file, then call with `path=<file>` to read each one in full. **Read the code yourself and reason about it** — do not rely only on `invoke_recon`'s heuristic indicators.
+- `read_source(path?)` — read the target's ACTUAL source code. Call it with **no arguments** to get ALL files in one response (do this — it is a single call, far cheaper than reading files one by one). Use `path=<file>` only to re-read a specific file. **Read the code yourself and reason about it** — do not rely only on `invoke_recon`'s heuristic indicators.
 - `record_finding(vuln_class, location, description, severity, suggested_poc?)` — log ONE vulnerability you discovered by reading the code. Call it once per distinct bug. Cover ANY class you can justify from the code (LFI, SSRF, SQLi, IDOR, AuthBypass, RCE, XSS, SSTI, path traversal, insecure deserialization, weak/predictable tokens, missing authorization, …) — not just the three the exploit agent can auto-validate.
 
 When source is available, your detection workflow is:

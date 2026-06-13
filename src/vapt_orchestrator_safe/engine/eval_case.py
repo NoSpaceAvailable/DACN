@@ -39,6 +39,8 @@ def run_eval_case(
     temperature: float,
     num_ctx: int,
     provider: str = "ollama",
+    call_delay_s: float = 0.0,
+    require_source_read: bool = False,
 ) -> Dict[str, Any]:
     if config_name not in ABLATION_CONFIGS:
         raise ValueError(f"Unknown config {config_name!r}; expected one of {sorted(ABLATION_CONFIGS)}")
@@ -75,6 +77,8 @@ def run_eval_case(
         chat_model_backend_spec=backend_spec,
         max_steps=max_steps,
         enable_sandbox=False,
+        call_delay_s=call_delay_s,
+        require_source_read=require_source_read,
         **ABLATION_CONFIGS[config_name],
     )
 

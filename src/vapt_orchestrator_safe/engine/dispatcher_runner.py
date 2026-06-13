@@ -110,6 +110,8 @@ class DispatcherRunner:
         mid_thinking_max_drift_chars: int = 1200,
         require_report: bool = True,
         enable_source_analysis: bool = True,
+        call_delay_s: float = 0.0,
+        require_source_read: bool = False,
     ):
         loaded = load_profiles(profiles_path)
         if profile_set_name not in loaded.profile_sets:
@@ -144,6 +146,8 @@ class DispatcherRunner:
         self.enable_mid_thinking = enable_mid_thinking
         self.require_report = require_report
         self.enable_source_analysis = enable_source_analysis
+        self.call_delay_s = call_delay_s
+        self.require_source_read = require_source_read
         self.mid_thinking_focus = mid_thinking_focus or []
         self.mid_thinking_max_drift_chars = mid_thinking_max_drift_chars
 
@@ -317,6 +321,12 @@ class DispatcherRunner:
             hook=effective_hook,
             watchdogs=watchdogs or None,
             require_report=self.require_report,
+            call_delay_s=self.call_delay_s,
+            require_source_read=(
+                self.require_source_read
+                and self.enable_source_analysis
+                and bool(intake.get("source_files"))
+            ),
         )
         result: DispatcherResult = dispatcher.run(goal or _DEFAULT_GOAL)
 

@@ -243,7 +243,13 @@ def main() -> int:
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--sleep-between", type=float, default=1.5,
-                        help="Seconds to sleep between API calls (avoid rate limits).")
+                        help="Seconds to sleep between runs (avoid rate limits).")
+    parser.add_argument("--call-delay", type=float, default=0.0,
+                        help="Seconds to pace EACH dispatcher LLM call within a run "
+                             "(set ~6-7 for 10-RPM free tiers like Gemini).")
+    parser.add_argument("--require-source-read", action="store_true",
+                        help="Force the model to read the source before finishing "
+                             "(completion guard for genuine source analysis).")
     parser.add_argument("--outputs-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--list-providers", action="store_true",
                         help="Print the registered providers and exit.")
@@ -320,6 +326,8 @@ def main() -> int:
                     request_timeout_s=args.request_timeout_s,
                     temperature=args.temperature,
                     num_ctx=args.num_ctx,
+                    call_delay_s=args.call_delay,
+                    require_source_read=args.require_source_read,
                 )
             except Exception as exc:
                 wall_s = time.perf_counter() - t0

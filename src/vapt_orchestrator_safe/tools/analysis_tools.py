@@ -17,7 +17,7 @@ This is family-agnostic detection grounded by the HackTricks knowledge graph
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, ClassVar, Dict, List, Optional, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,27 +33,34 @@ def _source_files(blackboard) -> List[Dict[str, Any]]:
 
 
 # ── read_source ────────────────────────────────────────────────────────────
+_MAX_ALL_CHARS = 24000  # budget when returning every file at once
+
+
 class _ReadSourceArgs(BaseModel):
     model_config = ConfigDict(extra="ignore")
     path: Optional[str] = Field(
         default=None,
-        description="File path to read in full. Omit to list all available source files first.",
+        description="Read ONE file in full. Omit to get ALL source files at once (preferred — "
+                    "one call instead of many).",
     )
     max_chars: int = Field(
         default=_MAX_FILE_CHARS,
-        description="Truncate the returned file content to this many characters.",
+        description="Per-file truncation limit.",
     )
 
 
 class ReadSourceTool(BaseTool):
     name: str = "read_source"
     description: str = (
-        "Read the target application's source code so you can analyse it for "
-        "vulnerabilities directly. Call with NO arguments to list every source "
-        "file; then call with path=<file> to read one file's full contents. "
-        "Use this to find bugs of ANY class by reading the code yourself."
+        "Read the target application's source code to analyse it for vulnerabilities. "
+        "Call with NO arguments to get ALL source files in one response (do this first — "
+        "it is one call, not many). Optionally pass path=<file> to re-read a single file. "
+        "Find bugs of ANY class by reading the code yourself."
     )
     args_schema: Type[BaseModel] = _ReadSourceArgs
+    # Source must reach the model intact; BaseTool's 2000-char default would
+    # clip it. Compaction shrinks the resent copies on later steps.
+    truncate_at: ClassVar[int] = _MAX_ALL_CHARS + 4000
 
     def _invoke(self, **kwargs: Any) -> ToolResult:
         files = _source_files(self._blackboard)
@@ -61,28 +68,36 @@ class ReadSourceTool(BaseTool):
             return ToolResult(stderr="No source files available for this target.", exit_code=2)
 
         path = kwargs.get("path")
-        if not path:
-            index = [{"path": f.get("path", "?"), "bytes": len(f.get("content", ""))} for f in files]
-            return ToolResult(stdout=json.dumps({"files": index, "count": len(index)}, ensure_ascii=False))
+        per_file = int(kwargs.get("max_chars", _MAX_FILE_CHARS))
 
-        # Match exact path or a suffix (model may pass just the file name).
+        if not path:
+            # Batch: return every file at once (fewer round-trips). Spread the
+            # total budget across files so one huge file can't starve the rest.
+            budget = _MAX_ALL_CHARS
+            share = max(800, budget // max(1, len(files)))
+            blocks = []
+            for f in files:
+                content = f.get("content", "")
+                cap = min(per_file, share)
+                truncated = len(content) > cap
+                body = content[:cap] + ("\n... (truncated)" if truncated else "")
+                blocks.append({"path": f.get("path", "?"), "truncated": truncated, "content": body})
+            return ToolResult(stdout=json.dumps(
+                {"files": blocks, "count": len(blocks), "mode": "all"}, ensure_ascii=False))
+
+        # Single file (exact path or suffix match).
         match = next(
             (f for f in files if f.get("path") == path or str(f.get("path", "")).endswith(path)),
             None,
         )
         if match is None:
             avail = [f.get("path", "?") for f in files]
-            return ToolResult(
-                stderr=f"No source file matching {path!r}. Available: {avail}",
-                exit_code=2,
-            )
-
-        max_chars = int(kwargs.get("max_chars", _MAX_FILE_CHARS))
+            return ToolResult(stderr=f"No source file matching {path!r}. Available: {avail}", exit_code=2)
         content = match.get("content", "")
-        truncated = len(content) > max_chars
-        body = content[:max_chars] + ("\n... (truncated)" if truncated else "")
-        payload = {"path": match.get("path"), "truncated": truncated, "content": body}
-        return ToolResult(stdout=json.dumps(payload, ensure_ascii=False))
+        truncated = len(content) > per_file
+        body = content[:per_file] + ("\n... (truncated)" if truncated else "")
+        return ToolResult(stdout=json.dumps(
+            {"path": match.get("path"), "truncated": truncated, "content": body}, ensure_ascii=False))
 
 
 # ── record_finding ───────────────────────────────────────────────────────--
