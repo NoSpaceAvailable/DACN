@@ -51,9 +51,12 @@ def test_parse_backend_ollama_split_first_colon_only():
     assert parse_backend("ollama:gemma4:e2b") == ("ollama", "gemma4:e2b")
 
 
-def test_registry_rejects_unknown_backend():
-    with pytest.raises(ValueError):
-        ModelRegistry({"probe": _profile()}, backend="claude:opus")
+def test_registry_treats_api_backend_as_rule():
+    # API-based backends (anthropic/openai/openrouter/custom) are handled by the
+    # dispatcher's ChatModel, not the sub-agent registry. The registry falls back
+    # to 'rule' so the runner can still construct it without crashing.
+    reg = ModelRegistry({"probe": _profile()}, backend="claude:opus")
+    assert reg.backend_label == "rule"
 
 
 def test_registry_ollama_requires_config():

@@ -13,5 +13,4 @@ notes/_*.txt
 notes/_*.pdf
 chat.md
 codex.md
-NYU_CTF_Bench-main/
-.vscode/
+data/corpus/*.done

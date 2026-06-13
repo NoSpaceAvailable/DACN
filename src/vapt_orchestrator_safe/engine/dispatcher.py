@@ -105,6 +105,8 @@ class Dispatcher:
         max_steps: int = _DEFAULT_MAX_STEPS,
         hook: Optional[DispatcherHook] = None,
         watchdogs: Optional[Sequence[Watchdog]] = None,
+        require_report: bool = False,
+        max_completion_nudges: int = 2,
     ):
         self._raw_chat_model = chat_model
         self._tools_list = list(tools)
@@ -118,6 +120,9 @@ class Dispatcher:
         self.watchdogs: List[Watchdog] = list(watchdogs or [])
         self._pending_correction: Optional[str] = None
         self.watchdog_trips: List[Dict[str, Any]] = []
+        self.require_report = require_report
+        self.max_completion_nudges = max_completion_nudges
+        self._completion_nudges = 0
 
         for tool in tools:
             if hasattr(tool, "bind_blackboard"):
@@ -188,6 +193,25 @@ class Dispatcher:
                         tool_calls=tool_calls,
                     )
                     messages[-1] = response
+                elif self._should_nudge_for_report(invocations):
+                    # Completion guard: a weak model may try to "finish" with a
+                    # plain-text answer before running the exploit / validation /
+                    # report stages. Nudge it back into the pipeline a bounded
+                    # number of times instead of accepting the premature stop.
+                    self._completion_nudges += 1
+                    self.blackboard.log_event(
+                        "dispatcher", f"step.{step}.completion_nudge",
+                        {"nudge": self._completion_nudges},
+                    )
+                    self._pending_correction = (
+                        "You stopped before completing the engagement, and you have "
+                        "NOT called invoke_report yet — so there is no final report. "
+                        "Do not give a final answer now. Continue the pipeline: if you "
+                        "have no hypotheses yet call invoke_analyst, then call "
+                        "invoke_exploit on your highest-confidence hypothesis, and only "
+                        "finish AFTER calling invoke_report."
+                    )
+                    continue
                 else:
                     self.blackboard.log_event(
                         "dispatcher",
@@ -261,6 +285,15 @@ class Dispatcher:
             tool_invocations=invocations,
         )
 
+
+    def _should_nudge_for_report(self, invocations: Sequence[Dict[str, Any]]) -> bool:
+        """True when the model wants to finish but hasn't produced a report yet
+        and we still have completion-nudge budget left."""
+        if not self.require_report:
+            return False
+        if self._completion_nudges >= self.max_completion_nudges:
+            return False
+        return not any(inv.get("name") == "invoke_report" for inv in invocations)
 
     # ── adaptive rescue ──────────────────────────────────────────────────
     def _try_rescue_tool_call(

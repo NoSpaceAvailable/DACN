@@ -107,6 +107,7 @@ class DispatcherRunner:
         enable_mid_thinking: bool = False,
         mid_thinking_focus: Optional[List[str]] = None,
         mid_thinking_max_drift_chars: int = 1200,
+        require_report: bool = True,
     ):
         loaded = load_profiles(profiles_path)
         if profile_set_name not in loaded.profile_sets:
@@ -139,6 +140,7 @@ class DispatcherRunner:
         self._kg_override = kg
         self.enable_specialized_tools = enable_specialized_tools
         self.enable_mid_thinking = enable_mid_thinking
+        self.require_report = require_report
         self.mid_thinking_focus = mid_thinking_focus or []
         self.mid_thinking_max_drift_chars = mid_thinking_max_drift_chars
 
@@ -247,7 +249,14 @@ class DispatcherRunner:
             if kg is None:
                 kg = InMemoryKG()
                 build_default_kg(kg)
-                Distiller.from_seed().populate_kg(kg)
+                distiller = Distiller.from_seed()
+                # Auto-merge a distilled external corpus (e.g. HackTricks via
+                # scripts/distill_hacktricks.py) when present. Absent = no-op,
+                # so eval still works out-of-the-box on the seed corpus alone.
+                corpus_path = ROOT / "data" / "corpus" / "hacktricks.jsonl"
+                if corpus_path.exists():
+                    distiller = distiller.merge(Distiller.from_jsonl(corpus_path))
+                distiller.populate_kg(kg)
             blackboard.kg_handle = kg
             nodes, edges = kg.size()
             blackboard.log_event("dispatcher_runner", "kg.enabled",
@@ -297,6 +306,7 @@ class DispatcherRunner:
             max_steps=self.max_steps,
             hook=effective_hook,
             watchdogs=watchdogs or None,
+            require_report=self.require_report,
         )
         result: DispatcherResult = dispatcher.run(goal or _DEFAULT_GOAL)
 
