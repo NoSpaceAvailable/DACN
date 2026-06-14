@@ -1,0 +1,14 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "renders index.html with a Mustache template fetched from a CDN host placeholder"},
+    {"method": "GET", "path": "/api/movies", "notes": "JSON list of movies; one is marked admin_only=true with redacted name"},
+    {"method": "GET", "path": "/cdn/main.mst", "notes": "Mustache template fetched cross-origin from a CDN host"},
+    {"method": "GET", "path": "/cdn/app.js", "notes": "regular-user JS bootstrap"},
+    {"method": "GET", "path": "/cdn/admin.js", "notes": "admin JS bootstrap; adds X-Admin-Secret on same-host fetches"},
+    {"method": "POST", "path": "/api/report", "notes": "requires a reCAPTCHA token; triggers an admin bot to visit the page"}
+  ],
+  "observations": [
+    "The index template fetches the CDN base URL from a placeholder {{ host }} substituted on the server.",
+    "An admin bot loads the page when /api/report receives a valid token."
+  ]
+}

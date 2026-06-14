@@ -1,0 +1,15 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "homepage; on first visit sets a trackingID cookie"},
+    {"method": "POST", "path": "/login", "notes": "sets up a tracking session based on the trackingID cookie"},
+    {"method": "POST", "path": "/submit", "notes": "form: email + password; authenticates a user"},
+    {"method": "POST", "path": "/displaydetails", "notes": "form: passType; returns pricing details"},
+    {"method": "POST", "path": "/changeprice", "notes": "form: Price; only admin members can change prices"},
+    {"method": "GET", "path": "/logout", "notes": "clears session"}
+  ],
+  "observations": [
+    "GET / sets a random 20-character trackingID cookie if not present and inserts a row into a trackingid SQL table.",
+    "A partial dump of the users table schema is provided as a handout: it has columns including email, password, privilege.",
+    "The application uses MySQL via pymysql with DictCursor."
+  ]
+}

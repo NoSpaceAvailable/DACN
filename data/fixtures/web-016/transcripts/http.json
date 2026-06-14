@@ -1,0 +1,13 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "marketing landing page; main app on host no.vulnerable.services"},
+    {"method": "POST", "path": "/register.php", "notes": "captures contact form submissions"},
+    {"method": "GET", "path": "/ping.php?dest=<host>", "notes": "support subdomain helper that runs a ping check against the given host"},
+    {"method": "GET", "path": "/admin/", "notes": "admin login page on a separate subdomain"}
+  ],
+  "observations": [
+    "The marketing site advertises a 'complementary security audit' by experts.",
+    "A support-tools subdomain hosts a ping helper at /ping.php.",
+    "The admin subdomain has a login form."
+  ]
+}

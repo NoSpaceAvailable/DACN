@@ -1,0 +1,3 @@
+# Partial schema dump shipped as challenge handout
+users(name, email, password, privilege, ...)
+trackingid(cookie, email)

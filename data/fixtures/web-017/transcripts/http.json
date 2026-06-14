@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "returns 'Hello'"},
+    {"method": "POST", "path": "/", "notes": "JSON body: {\"username\": <str>, \"encoding\": <list of floats>}; returns success/failure"}
+  ],
+  "observations": [
+    "The server exposes a single biometric verification endpoint.",
+    "A list of registered usernames and their target encodings is stored on the server in data/secret.txt."
+  ]
+}

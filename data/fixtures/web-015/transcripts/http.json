@@ -1,0 +1,12 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/login/gitlab", "notes": "starts the GitLab OAuth flow"},
+    {"method": "GET", "path": "/", "notes": "renders the facts page; requires a logged-in GitLab session"},
+    {"method": "POST", "path": "/", "notes": "form: page — URL of a file on the user's auto-created GitLab project; server fetches the file content via the GitLab API and shows it as a 'shark fact'"}
+  ],
+  "observations": [
+    "On first login, the server creates a GitLab project for the user with a main branch.",
+    "The form posts a page URL; the server requires the URL to start with the user's project blob/main/ prefix.",
+    "If the fetched content (case-insensitively) equals 'blahaj is life', the server appends the flag to the response."
+  ]
+}

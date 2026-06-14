@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/?path=poem1.txt", "notes": "returns the selected file from a backend poems directory"}
+  ],
+  "observations": [
+    "The frontend on port 9999 proxies the path query parameter to a backend HTTP server on localhost:8080.",
+    "Inputs failing the filter return HTTP 403 with body 'WHOA THATS BANNED!!!!'.",
+    "The filter rejects paths containing '.', the fullwidth character 'Ｎ', or the '%' character, and requires the extension to be '.txt'."
+  ]
+}

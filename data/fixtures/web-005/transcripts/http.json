@@ -1,0 +1,14 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/login.php", "notes": "renders the login form; POSTs back to /login.php with username + password"},
+    {"method": "POST", "path": "/login.php", "notes": "authenticates user against the user table; redirects to /query.php on success"},
+    {"method": "GET", "path": "/api/db_explore.php?mode=schema", "notes": "lists databases (or tables / columns when db & table are supplied)"},
+    {"method": "GET", "path": "/api/db_explore.php?mode=preview&db=<X>&table=<Y>", "notes": "returns the first 10 rows of <X>.<Y> as JSON"}
+  ],
+  "observations": [
+    "Login is required for /query.php; /api/db_explore.php is reachable without authentication.",
+    "The schema-mode endpoint refuses to list the information_schema database.",
+    "The preview-mode endpoint refuses to preview rows from a small blocklist of databases.",
+    "Client-side JS hashes the password with crypto-js SHA-1 before sending."
+  ]
+}

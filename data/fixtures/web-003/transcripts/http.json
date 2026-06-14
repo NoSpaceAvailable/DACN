@@ -1,0 +1,12 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/register", "notes": "register a new user with {username, password}"},
+    {"method": "POST", "path": "/login", "notes": "log in with {username, password}; sets a session cookie"},
+    {"method": "GET", "path": "/logout", "notes": "destroys the session"},
+    {"method": "GET", "path": "/profile/<profile>", "notes": "view a user's profile"}
+  ],
+  "observations": [
+    "Direct external requests to GET /profile/ram and GET /profile/ram/ return 403 Forbidden from the reverse proxy.",
+    "The application stack is: nginx → Node.js Express service on port 4999."
+  ]
+}

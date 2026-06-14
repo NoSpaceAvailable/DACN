@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "renders the upload form"},
+    {"method": "POST", "path": "/", "notes": "accepts an image upload (.jpg or .png); returns a 256-edge resized copy as an attachment"}
+  ],
+  "observations": [
+    "Only .jpg and .png extensions are accepted by the form handler.",
+    "The server uses PIL (Pillow) for image processing."
+  ]
+}

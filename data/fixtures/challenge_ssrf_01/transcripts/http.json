@@ -1,8 +1,0 @@
-{
-  "routes": [
-    {"method": "POST", "path": "/api/webhook/preview", "notes": "accepts JSON body with a url field"}
-  ],
-  "observations": [
-    "The server fetches the supplied URL and returns the response status, content size, and a snippet of the body."
-  ]
-}

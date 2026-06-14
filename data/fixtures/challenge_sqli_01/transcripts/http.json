@@ -1,8 +1,0 @@
-{
-  "routes": [
-    {"method": "POST", "path": "/login", "notes": "takes username and password form fields; returns {ok: true|false}"}
-  ],
-  "observations": [
-    "Login returns {ok: true} on valid credentials and {ok: false} otherwise."
-  ]
-}

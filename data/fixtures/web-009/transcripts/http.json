@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {"method": "RPC", "path": "notes.count(filter)", "notes": "Meteor method; returns the number of notes matching a filter object"},
+    {"method": "RPC", "path": "notes.add()", "notes": "creates a new note for the authenticated user"},
+    {"method": "RPC", "path": "notes.remove(id)", "notes": "removes a note owned by the authenticated user"}
+  ],
+  "observations": [
+    "Calls to notes.count return a non-negative integer.",
+    "The database is seeded at startup with a mix of notes owned by different random user ids; some seed notes contain plaintext secrets."
+  ]
+}

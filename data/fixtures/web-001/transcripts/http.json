@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "landing page with link to /poems/"},
+    {"method": "GET", "path": "/poems/", "notes": "form with submit buttons for poem1.txt, poem2.txt, poem3.txt"},
+    {"method": "GET", "path": "/poems/?poem=poem1.txt", "notes": "renders the file content inside <pre> tags"}
+  ],
+  "observations": [
+    "The poem parameter selects which file the application reads and displays."
+  ]
+}

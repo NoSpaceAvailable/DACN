@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "single-page note app; the 'note' query parameter is rendered via innerHTML then rainbowified"},
+    {"method": "GET", "path": "/admin/bot", "notes": "internal bot endpoint reviewed by an admin headless browser that holds the flag in URL fragment"}
+  ],
+  "observations": [
+    "The page sets a CSP that allows inline styles and inline scripts but restricts other origins.",
+    "An admin bot visits user-submitted URLs to 'review' the note."
+  ]
+}

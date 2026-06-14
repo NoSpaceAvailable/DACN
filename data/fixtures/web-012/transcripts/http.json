@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "renders the game lobby; sets a session cookie containing a JWT"},
+    {"method": "POST", "path": "/bet", "notes": "place a bet on a snail; updates player money in the session"},
+    {"method": "POST", "path": "/race", "notes": "run a race and resolve bets against the session"}
+  ],
+  "observations": [
+    "Session state (including the 'money' field) is encoded into a JWT stored in a cookie.",
+    "Redis is used by the backend; the application sets keys named 'session.<sid>'."
+  ]
+}

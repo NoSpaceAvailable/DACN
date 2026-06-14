@@ -1,0 +1,18 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/register", "notes": "JSON body: username, password, first_name, last_name"},
+    {"method": "POST", "path": "/login", "notes": "JSON body: username, password; returns JWT in cookie"},
+    {"method": "GET", "path": "/verify", "notes": "JWT-protected; returns the requester's account info"},
+    {"method": "GET", "path": "/account", "notes": "JWT-protected; returns the account fields (except id, password)"},
+    {"method": "POST", "path": "/logout", "notes": "JWT-protected; clears the cookie"},
+    {"method": "POST", "path": "/update", "notes": "JWT-protected; takes a JSON body and updates account fields"},
+    {"method": "POST", "path": "/upgrade", "notes": "JWT-protected; takes JSON body with 'code'; always returns 'Incorrect code!'"},
+    {"method": "GET", "path": "/get_flag", "notes": "JWT-protected; returns the flag image path only when the requester's identity matches a hard-coded admin"},
+    {"method": "GET", "path": "/images?user=<x>", "notes": "lists Image rows filtered by submitter; no auth required"}
+  ],
+  "observations": [
+    "The application is a Flask + Flask-JWT-Extended + SQLAlchemy identity service.",
+    "/upgrade always responds with 'Incorrect code!' regardless of input.",
+    "The /images endpoint computes the submitter filter by slicing the user query parameter as user[1:-1]."
+  ]
+}

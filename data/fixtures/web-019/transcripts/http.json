@@ -1,0 +1,13 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "renders the landing page"},
+    {"method": "GET", "path": "/hint", "notes": "renders a page with a login form"},
+    {"method": "POST", "path": "/hint", "notes": "passport-local login"},
+    {"method": "GET", "path": "/flag", "notes": "returns HTTP 401 Unauthorized"},
+    {"method": "GET", "path": "/flag.txt", "notes": "static file served by the backend"}
+  ],
+  "observations": [
+    "The deployment runs an nginx reverse proxy on port 3009 that forwards traffic to an Express backend on port 3010.",
+    "The full nginx configuration is included in the source handout."
+  ]
+}

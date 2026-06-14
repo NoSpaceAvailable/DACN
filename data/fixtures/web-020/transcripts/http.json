@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "renders /templates/index.html (logged out) or /templates/index_logged_in.html"},
+    {"method": "GET", "path": "/login.html", "notes": "renders the login form"},
+    {"method": "POST", "path": "/login", "notes": "sets a signed cookie on success"},
+    {"method": "GET", "path": "/register.html", "notes": "registration form"},
+    {"method": "POST", "path": "/register", "notes": "creates a new user account"},
+    {"method": "GET", "path": "/admin/*", "notes": "admin-only endpoints; require signed cookie identifying an admin user"}
+  ],
+  "observations": [
+    "The application is implemented entirely as MySQL stored procedures.",
+    "Templates are stored in a templates table and rendered via a template_string procedure that performs simple ${var} substitution.",
+    "Cookies are signed with HMAC-SHA256 using a server-side signing_key value stored in the config table.",
+    "POST parameters are checked against a blocklist that rejects values containing the literal string 'signing_key'."
+  ]
+}

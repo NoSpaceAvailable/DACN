@@ -1,0 +1,12 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "redirects to /login"},
+    {"method": "GET", "path": "/login", "notes": "displays a login form"},
+    {"method": "POST", "path": "/login", "notes": "authenticates user; redirects to /home on success, back to /login on failure"},
+    {"method": "GET", "path": "/home", "notes": "protected page requiring a valid session"}
+  ],
+  "observations": [
+    "Login form accepts username and password via POST.",
+    "Authentication error message is generic: 'Authentication failed.'"
+  ]
+}
