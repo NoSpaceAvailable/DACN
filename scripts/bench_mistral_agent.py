@@ -287,8 +287,14 @@ def _normalise_family(s: str) -> str:
         "nosqlinjection": "nosqli",
         "sqlinjection": "sqli",
         "ssrfattack": "ssrf",
+        # LFI / Path Traversal collapse to the same family (OWASP A03/A05 overlap).
+        "lfi": "lfi",
         "lfiattack": "lfi",
-        "directorytraversal": "pathtraversal",
+        "localfileinclusion": "lfi",
+        "pathtraversal": "lfi",
+        "directorytraversal": "lfi",
+        "pathtraversalattack": "lfi",
+        "filepathmanipulation": "lfi",
         "insecuredirectobjectreference": "idor",
         # Auth bypass family (JWT forgery, token forgery, session hijack all
         # collapse to the same outcome class for benchmark purposes).
