@@ -62,6 +62,8 @@ from vapt_orchestrator_safe.tools.agent_tools import (
     PivotTool,
 )
 from vapt_orchestrator_safe.tools.analysis_tools import ReadSourceTool, RecordFindingTool
+from vapt_orchestrator_safe.tools.cve_tool import QueryCveTool
+from vapt_orchestrator_safe.tools.ghsa_tool import QueryGhsaTool
 from vapt_orchestrator_safe.tools.kg_tools import QueryKGTool, QueryRAGTool
 from vapt_orchestrator_safe.tools.sandbox_exec import RunPythonInSandboxTool
 from vapt_orchestrator_safe.tools.security import (
@@ -277,6 +279,15 @@ class DispatcherRunner:
                                  {"nodes": nodes, "edges": edges})
             tools.append(QueryKGTool(kg))
             tools.append(QueryRAGTool(self.rag))
+            # Online CVE lookup (NVD API). Cached on disk so repeat bench runs
+            # are deterministic. Closes the gap where a fixture pins a specific
+            # component+version (e.g. nginx 1.17.6) and the local KG/RAG has no
+            # CVE row for that exact (component, version range).
+            tools.append(QueryCveTool())
+            # GitHub Advisory Database — strong for package-ecosystem vulns
+            # (npm/pip/maven/etc) where the package@version → patched-version
+            # mapping is cleaner than NVD's CPE rows.
+            tools.append(QueryGhsaTool())
 
         chat_model = self._chat_model
         if chat_model is None:

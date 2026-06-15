@@ -74,15 +74,7 @@ if SRC.exists() and str(SRC) not in sys.path:
 from vapt_orchestrator_safe.engine.eval_case import ABLATION_CONFIGS, run_eval_case  # noqa: E402
 
 
-_DEFAULT_FIXTURES = [
-    "challenge_idor_01",
-    "challenge_ssrf_01",
-    "challenge_sqli_01",
-    "challenge_lfi_01",
-    "challenge_sqli_02",
-    "challenge_nosqli_01",
-    "challenge_pathtraversal_01",
-]
+_DEFAULT_FIXTURES = [f"web-{i:03d}" for i in range(1, 21)]
 
 
 # ── Provider registry ─────────────────────────────────────────────────────

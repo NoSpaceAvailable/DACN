@@ -1,6 +1,6 @@
 # VAPT Orchestrator Safe Lab
 
-A defensive research scaffold for a **multi-agent web security orchestration system**.
+An offensive research scaffold for a **multi-agent web security orchestration system**.
 
 This repository is designed for an academic project on **multi-agent orchestration and management for web application penetration testing**. It mirrors the high-level role separation used in MAPTA-style systems—**Coordinator / Sandbox / Validation**—but keeps execution in a **local offline lab** using recorded fixtures and source snapshots instead of probing real targets.
 

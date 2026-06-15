@@ -53,7 +53,12 @@ try:
 except ImportError:
     raise SystemExit("pip install requests")
 
+from vapt_orchestrator_safe.config import _load_dotenv_if_present  # noqa: E402
 from vapt_orchestrator_safe.sandbox.local_lab import LocalLabAdapter  # noqa: E402
+
+# Eager-load .env so MISTRAL_API_KEY / MISTRAL_AGENT_ID / MISTRAL_MODEL_ID set
+# in the dotfile populate os.environ before argparse computes its defaults.
+_load_dotenv_if_present()
 
 
 API_BASE = "https://api.mistral.ai"
@@ -499,8 +504,9 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--agent-id", required=True,
-                        help="Mistral Agent id (ag_...)")
+    parser.add_argument("--agent-id",
+                        default=os.environ.get("MISTRAL_AGENT_ID"),
+                        help="Mistral Agent id (ag_...). Falls back to MISTRAL_AGENT_ID env var.")
     parser.add_argument("--agent-version", default=None,
                         help="Optional agent version (string or int). Omit to use latest.")
     parser.add_argument("--no-store", action="store_true",
@@ -525,6 +531,8 @@ def main() -> int:
     api_key = args.api_key or os.environ.get("MISTRAL_API_KEY")
     if not api_key:
         raise SystemExit("Need --api-key or MISTRAL_API_KEY")
+    if not args.agent_id:
+        raise SystemExit("Need --agent-id or MISTRAL_AGENT_ID")
 
     lab = LocalLabAdapter(ROOT)
 

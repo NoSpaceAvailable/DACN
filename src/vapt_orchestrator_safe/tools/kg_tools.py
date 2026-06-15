@@ -54,7 +54,7 @@ class _KGArgs(BaseModel):
 class QueryKGTool(BaseTool):
     name: str = "query_kg"
     description: str = (
-        "Query the defensive knowledge graph for attack-family payloads, "
+        "Query the offensive knowledge graph for attack-family payloads, "
         "framework-specific sinks, or a specific entity by id. Returns a "
         "compact list of subject-predicate-object triples (10-20× cheaper "
         "than querying the raw RAG for the same question)."
