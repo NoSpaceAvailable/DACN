@@ -60,15 +60,7 @@ API_BASE = "https://api.mistral.ai"
 CONVERSATIONS_PATH = "/v1/conversations"
 
 
-_DEFAULT_FIXTURES = [
-    "challenge_idor_01",
-    "challenge_ssrf_01",
-    "challenge_sqli_01",
-    "challenge_lfi_01",
-    "challenge_sqli_02",
-    "challenge_nosqli_01",
-    "challenge_pathtraversal_01",
-]
+_DEFAULT_FIXTURES = [f"web-{i:03d}" for i in range(1, 21)]
 
 
 # ─────────────────────────── Input builder ────────────────────────────────

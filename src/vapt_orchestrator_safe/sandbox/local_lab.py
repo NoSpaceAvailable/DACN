@@ -23,7 +23,10 @@ class LocalLabAdapter(BaseLabAdapter):
     def load_source_files(self, fixture_dir: Path) -> List[Dict[str, Any]]:
         source_root = self.guard.ensure_path(fixture_dir / "source")
         files: List[Dict[str, Any]] = []
-        for path in iter_files(source_root, suffixes={".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".php", ".conf"}):
+        for path in iter_files(source_root, suffixes={
+            ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".php",
+            ".conf", ".html", ".htm", ".sql", ".mst", ".ejs", ".txt", ".yaml", ".yml",
+        }):
             files.append({"path": str(path.relative_to(fixture_dir)), "content": read_text(path)})
         return files
 
