@@ -293,7 +293,29 @@ class QueryCveTool(BaseTool):
                     break
             severity = self._extract_severity(cve)
             affected = self._extract_affected(cve)
-            refs = [r.get("url", "") for r in (cve.get("references") or [])][:3]
+            # Emit references with their NVD tags so the model can prioritise
+            # PoC-bearing URLs (tags=['Exploit'], ['Third Party Advisory'],
+            # ['Technical Description']) when picking what to feed into
+            # `fetch_writeup`. Tag-less URLs go through too, just sorted last.
+            ref_rows: List[Dict[str, Any]] = []
+            for r in (cve.get("references") or [])[:8]:
+                ref_rows.append({
+                    "url": r.get("url", ""),
+                    "tags": list(r.get("tags") or []),
+                })
+            # Sort: Exploit tagged first, then Third Party Advisory, then rest.
+            def _ref_rank(row: Dict[str, Any]) -> int:
+                tags = set(row.get("tags") or [])
+                if "Exploit" in tags:
+                    return 0
+                if "Third Party Advisory" in tags:
+                    return 1
+                if "Technical Description" in tags:
+                    return 2
+                if "Vendor Advisory" in tags:
+                    return 3
+                return 4
+            ref_rows.sort(key=_ref_rank)
             out.append({
                 "id": cve_id,
                 "summary": summary,
@@ -301,7 +323,7 @@ class QueryCveTool(BaseTool):
                 "cwe": cwe,
                 "severity": severity,
                 "affected": affected,
-                "references": refs,
+                "references": ref_rows,
             })
         return out
 
@@ -366,7 +388,12 @@ class QueryCveTool(BaseTool):
                 )
                 lines.append(f"  affected: {aff_text}")
             if c.get("references"):
-                lines.append(f"  refs: {' | '.join(c['references'][:2])}")
+                for r in c["references"][:4]:
+                    if isinstance(r, dict):
+                        tag_text = f"[{','.join(r.get('tags') or []) or '-'}]"
+                        lines.append(f"  ref {tag_text}: {r.get('url','')}")
+                    else:  # backward-compat: plain string
+                        lines.append(f"  ref: {r}")
         return "\n".join(lines)
 
 

@@ -63,8 +63,11 @@ from vapt_orchestrator_safe.tools.agent_tools import (
 )
 from vapt_orchestrator_safe.tools.analysis_tools import ReadSourceTool, RecordFindingTool
 from vapt_orchestrator_safe.tools.cve_tool import QueryCveTool
+from vapt_orchestrator_safe.tools.exploitdb_tool import QueryExploitDBTool
 from vapt_orchestrator_safe.tools.ghsa_tool import QueryGhsaTool
 from vapt_orchestrator_safe.tools.kg_tools import QueryKGTool, QueryRAGTool
+from vapt_orchestrator_safe.tools.nuclei_tool import QueryNucleiTool
+from vapt_orchestrator_safe.tools.writeup_tool import FetchWriteupTool
 from vapt_orchestrator_safe.tools.sandbox_exec import RunPythonInSandboxTool
 from vapt_orchestrator_safe.tools.security import (
     BlindTimingSampler,
@@ -288,6 +291,16 @@ class DispatcherRunner:
             # (npm/pip/maven/etc) where the package@version → patched-version
             # mapping is cleaner than NVD's CPE rows.
             tools.append(QueryGhsaTool())
+            # PoC retrieval chain — bridges the gap between "found a CVE id" and
+            # "have a working PoC". The benchmark showed mistral-medium could
+            # name CVE-2019-20372 but not synthesise the actual smuggling
+            # technique. Order of preference for the LLM:
+            #   1. query_nuclei      — structured HTTP request + matchers (YAML)
+            #   2. query_exploitdb   — raw PoC script as template (~46k CVEs)
+            #   3. fetch_writeup     — allowlisted advisory/blog text (last resort)
+            tools.append(QueryNucleiTool())
+            tools.append(QueryExploitDBTool())
+            tools.append(FetchWriteupTool())
 
         chat_model = self._chat_model
         if chat_model is None:
