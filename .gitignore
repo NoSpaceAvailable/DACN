@@ -16,3 +16,4 @@ codex.md
 data/corpus/*.done
 .vscode/*
 NYU_CTF_Bench-main/*
+latex/
