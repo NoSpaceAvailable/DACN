@@ -1,0 +1,7 @@
+{
+  "routes": [
+    {"method": "GET", "path": "/", "notes": "landing page"},
+    {"method": "GET", "path": "/read", "notes": "query param path; returns file contents"}
+  ],
+  "observations": []
+}

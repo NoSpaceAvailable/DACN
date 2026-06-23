@@ -242,6 +242,10 @@ def main() -> int:
     parser.add_argument("--require-source-read", action="store_true",
                         help="Force the model to read the source before finishing "
                              "(completion guard for genuine source analysis).")
+    parser.add_argument("--live", action="store_true",
+                        help="Live-exploit mode: boot each fixture's docker-compose "
+                             "(manifest 'live' block) and let the agent capture the flag. "
+                             "Metric becomes solve-rate.")
     parser.add_argument("--outputs-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--list-providers", action="store_true",
                         help="Print the registered providers and exit.")
@@ -320,6 +324,7 @@ def main() -> int:
                     num_ctx=args.num_ctx,
                     call_delay_s=args.call_delay,
                     require_source_read=args.require_source_read,
+                    enable_live_exploit=args.live,
                 )
             except Exception as exc:
                 wall_s = time.perf_counter() - t0
@@ -345,7 +350,7 @@ def main() -> int:
             with open(jsonl_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-            flag = "V" if row["validated_findings"] > 0 else "-"
+            flag = "S" if row.get("solved") else ("V" if row["validated_findings"] > 0 else "-")
             elapsed = time.perf_counter() - bench_t0
             eta = (elapsed / idx) * (total - idx)
             print(f"  [{flag}] {row['status']}  steps={row['steps']}  tools={row['tool_calls']}  "
@@ -362,7 +367,7 @@ def main() -> int:
     try:
         import pandas as pd
         df = pd.DataFrame(results)
-        df["detected"] = df["status"].isin(["validated", "supported"]).astype(int)
+        df["detected"] = df["status"].isin(["solved", "validated", "supported"]).astype(int)
         df.to_csv(csv_path, index=False)
         summary = {
             "by_config": df.groupby("config")["detected"].mean().round(3).to_dict(),

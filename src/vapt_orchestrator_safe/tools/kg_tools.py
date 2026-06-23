@@ -16,7 +16,7 @@ so the eval harness can compute the per-question savings directly.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, ClassVar, Dict, List, Optional, Type
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
@@ -60,6 +60,10 @@ class QueryKGTool(BaseTool):
         "than querying the raw RAG for the same question)."
     )
     args_schema: Type[BaseModel] = _KGArgs
+    # The stdout is a JSON document callers parse; BaseTool's 2000-char default
+    # would cut it mid-object (esp. with the richer disambiguator props), so
+    # raise the cap to keep the JSON intact.
+    truncate_at: ClassVar[int] = 12000
 
     _kg: KG = PrivateAttr()
 

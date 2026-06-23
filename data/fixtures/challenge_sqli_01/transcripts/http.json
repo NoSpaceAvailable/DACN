@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/login", "notes": "username + password; authenticates against users table"}
+  ],
+  "observations": [
+    "POST /login builds a SQL query from the username field.",
+    "A username of admin' -- appears to bypass authentication."
+  ]
+}

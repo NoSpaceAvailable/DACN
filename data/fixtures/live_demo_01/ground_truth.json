@@ -1,0 +1,7 @@
+{
+  "expected_vulnerability": "LFI",
+  "severity": "High",
+  "oracle": "arbitrary_file_read",
+  "flag": "flag{live_lfi_demo_ok}",
+  "poc": {"method": "GET", "path": "/read?path=/flag.txt", "indicator": "flag_returned_in_body"}
+}

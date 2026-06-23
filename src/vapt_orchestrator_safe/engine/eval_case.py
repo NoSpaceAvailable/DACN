@@ -41,6 +41,7 @@ def run_eval_case(
     provider: str = "ollama",
     call_delay_s: float = 0.0,
     require_source_read: bool = False,
+    enable_live_exploit: bool = False,
 ) -> Dict[str, Any]:
     if config_name not in ABLATION_CONFIGS:
         raise ValueError(f"Unknown config {config_name!r}; expected one of {sorted(ABLATION_CONFIGS)}")
@@ -79,6 +80,7 @@ def run_eval_case(
         enable_sandbox=False,
         call_delay_s=call_delay_s,
         require_source_read=require_source_read,
+        enable_live_exploit=enable_live_exploit,
         **ABLATION_CONFIGS[config_name],
     )
 
@@ -112,6 +114,7 @@ def run_eval_case(
         "steps": summary.get("steps", 0),
         "tool_calls": len(summary.get("tool_invocations", [])),
         "validated_findings": len(summary.get("validated_findings", [])),
+        "solved": bool(summary.get("solved", False)),
         "loop_detected": loop_detected,
         "watchdog_trips": len(summary.get("watchdog_trips", [])),
         "wall_s": round(wall_s, 2),

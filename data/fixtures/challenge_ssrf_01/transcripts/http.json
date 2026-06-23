@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {"method": "POST", "path": "/api/webhook/preview", "notes": "accepts {url}; server fetches it and returns a preview"}
+  ],
+  "observations": [
+    "POST /api/webhook/preview with {\"url\": ...} makes the server fetch that url.",
+    "No allowlist on the url parameter; internal/link-local addresses are reachable."
+  ]
+}

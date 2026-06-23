@@ -62,6 +62,8 @@ from vapt_orchestrator_safe.tools.agent_tools import (
     PivotTool,
 )
 from vapt_orchestrator_safe.tools.analysis_tools import ReadSourceTool, RecordFindingTool
+from vapt_orchestrator_safe.tools.flag_tools import SubmitFlagTool
+from vapt_orchestrator_safe.sandbox.live_lab import LiveLab
 from vapt_orchestrator_safe.tools.cve_tool import QueryCveTool
 from vapt_orchestrator_safe.tools.exploitdb_tool import QueryExploitDBTool
 from vapt_orchestrator_safe.tools.ghsa_tool import QueryGhsaTool
@@ -85,6 +87,14 @@ from vapt_orchestrator_safe.utils.io import ensure_dir, write_json
 _DEFAULT_GOAL = (
     "Find and validate a web vulnerability in the fixture loaded in shared memory. "
     "Follow the recon → signature → analyst → exploit → report pipeline."
+)
+
+_LIVE_GOAL = (
+    "A LIVE instance of the target is running. First read the source to find the "
+    "vulnerability, then EXPLOIT the live target using http_probe / curl to capture "
+    "the flag, and call submit_flag with it. The live target URL is in "
+    "phase_context['live']['target_url']. Finish only after submit_flag is correct "
+    "or you have exhausted options."
 )
 
 
@@ -117,6 +127,7 @@ class DispatcherRunner:
         enable_source_analysis: bool = True,
         call_delay_s: float = 0.0,
         require_source_read: bool = False,
+        enable_live_exploit: bool = False,
     ):
         loaded = load_profiles(profiles_path)
         if profile_set_name not in loaded.profile_sets:
@@ -153,6 +164,7 @@ class DispatcherRunner:
         self.enable_source_analysis = enable_source_analysis
         self.call_delay_s = call_delay_s
         self.require_source_read = require_source_read
+        self.enable_live_exploit = enable_live_exploit
         self.mid_thinking_focus = mid_thinking_focus or []
         self.mid_thinking_max_drift_chars = mid_thinking_max_drift_chars
 
@@ -182,6 +194,27 @@ class DispatcherRunner:
         budget.max_time_seconds = int(limits.get("time_seconds", budget.max_time_seconds))
         budget.max_simulated_cost = float(limits.get("simulated_usd", budget.max_simulated_cost))
         blackboard.set_budget(budget.to_dict())
+
+        # Live-exploit mode: boot the challenge container so the HTTP tools talk
+        # to a real running instance and the agent can capture the flag.
+        live_lab: Optional[LiveLab] = None
+        live_cfg = intake["manifest"].get("live") if self.enable_live_exploit else None
+        if live_cfg:
+            live_lab = LiveLab()
+            target = live_lab.launch(
+                fixture_dir,
+                compose_file=live_cfg["compose_file"],
+                target_url=live_cfg["target_url"],
+                ready_path=live_cfg.get("ready_path", "/"),
+                ready_timeout_s=int(live_cfg.get("ready_timeout_s", 60)),
+            )
+            blackboard.set_phase_context("live", {
+                "target_url": target.target_url,
+                "flag": (intake.get("ground_truth") or {}).get("flag", ""),
+                "solved": False,
+            })
+            blackboard.log_event("dispatcher_runner", "live_exploit.launched",
+                                 {"target_url": target.target_url})
 
         # Instantiate sub-agents once; wrap as AgentInvoker closures.
         recon_agent = ReconAgent(deps)
@@ -219,6 +252,10 @@ class DispatcherRunner:
         if self.enable_source_analysis:
             tools.append(ReadSourceTool())
             tools.append(RecordFindingTool())
+
+        # Live-exploit: let the agent submit the captured flag.
+        if live_cfg:
+            tools.append(SubmitFlagTool())
 
         # Only attach security tools when the fixture opts in via a manifest scope
         # block. Static source-only fixtures (challenge_idor_01 etc.) never need
@@ -352,7 +389,12 @@ class DispatcherRunner:
                 and bool(intake.get("source_files"))
             ),
         )
-        result: DispatcherResult = dispatcher.run(goal or _DEFAULT_GOAL)
+        effective_goal = goal or (_LIVE_GOAL if live_cfg else _DEFAULT_GOAL)
+        try:
+            result: DispatcherResult = dispatcher.run(effective_goal)
+        finally:
+            if live_lab is not None:
+                live_lab.teardown()
 
         return self._finalise(
             blackboard=blackboard,
@@ -389,10 +431,13 @@ class DispatcherRunner:
         exploit_ctx = blackboard.get_phase_context("exploit")
         findings_ctx = blackboard.get_phase_context("findings") or {}
         llm_findings = findings_ctx.get("items", [])
+        live_ctx = blackboard.get_phase_context("live") or {}
+        solved = bool(live_ctx.get("solved", False))
         validations = exploit_ctx.get("validations") or []
         validated = [v for v in validations if v.status in {"verified", "supported"}]
         overall = (
-            "validated" if any(v.status == "verified" for v in validations)
+            "solved" if solved
+            else "validated" if any(v.status == "verified" for v in validations)
             else "supported" if any(v.status == "supported" for v in validations)
             else "no_validated_findings"
         )
@@ -410,6 +455,8 @@ class DispatcherRunner:
             "tool_invocations": result.tool_invocations,
             "watchdog_trips": watchdog_trips or [],
             "llm_findings": llm_findings,
+            "solved": solved,
+            "submitted_flag": live_ctx.get("submitted_flag", ""),
             "final_text": result.final_text,
             "validated_findings": [
                 {
