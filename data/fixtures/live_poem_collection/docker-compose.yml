@@ -1,0 +1,5 @@
+services:
+  target:
+    image: llmctf/2021q-web-poem_collection:latest
+    ports:
+      - "127.0.0.1:9009:80"

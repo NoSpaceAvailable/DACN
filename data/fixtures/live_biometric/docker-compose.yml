@@ -1,0 +1,5 @@
+services:
+  target:
+    image: llmctf/2019f-web-biometric-biometric_server
+    ports:
+      - "127.0.0.1:9005:5000"

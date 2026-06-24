@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "notes": "web challenge entrypoint"
+    }
+  ],
+  "observations": []
+}

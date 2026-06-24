@@ -9,13 +9,47 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from vapt_orchestrator_safe.engine.dispatcher_runner import DispatcherRunner
 from vapt_orchestrator_safe.llm.backend_factory import build_chat_model
 from vapt_orchestrator_safe.llm.registry import OllamaConfig
+
+
+# ── vulnerability-class canonicalisation (for scoring detection) ────────────
+# Maps the many surface names a model/ground-truth may use to one canonical
+# token, so "HTTP Request Smuggling" matches "RequestSmuggling", etc.
+_VULN_ALIASES: Dict[str, set] = {
+    "requestsmuggling": {"httprequestsmuggling", "requestsmuggling", "httpsmuggling", "smuggling", "desync"},
+    "sqli": {"sqli", "sqlinjection"},
+    "nosqli": {"nosqli", "nosqlinjection"},
+    "ssti": {"ssti", "serversidetemplateinjection", "templateinjection"},
+    "ssrf": {"ssrf", "serversiderequestforgery"},
+    "idor": {"idor", "insecuredirectobjectreference", "bola", "brokenobjectlevelauthorization"},
+    "lfi": {"lfi", "localfileinclusion", "arbitraryfileread", "pathtraversal", "directorytraversal", "filedisclosure", "fileread"},
+    "rce": {"rce", "remotecodeexecution", "commandinjection", "codeinjection", "oscommandinjection"},
+    "xss": {"xss", "crosssitescripting"},
+    "xxe": {"xxe", "xmlexternalentity"},
+    "authbypass": {"authbypass", "authenticationbypass", "brokenauthentication", "brokenauth"},
+    "csrf": {"csrf", "crosssiterequestforgery"},
+    "deserialization": {"deserialization", "insecuredeserialization"},
+}
+
+
+def _canon_vuln(name: str) -> str:
+    t = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    for canon, aliases in _VULN_ALIASES.items():
+        if t == canon or t in aliases:
+            return canon
+    return t
+
+
+def _vuln_match(a: str, b: str) -> bool:
+    ca, cb = _canon_vuln(a), _canon_vuln(b)
+    return bool(ca) and bool(cb) and ca == cb
 
 
 ABLATION_CONFIGS: Dict[str, Dict[str, bool]] = {
@@ -105,6 +139,20 @@ def run_eval_case(
             events = json.loads(mem_path.read_text(encoding="utf-8")).get("events", [])
             loop_detected = sum(1 for e in events if e.get("message") == "loop_detected")
 
+    # Detection score: credit the LLM-driven finding (record_finding) when its
+    # vuln_class matches the ground-truth expected vulnerability, in addition to
+    # solved / oracle-validated. This counts what the model actually found.
+    expected_vuln = ""
+    gt_path = fixture / "ground_truth.json"
+    if gt_path.exists():
+        try:
+            expected_vuln = json.loads(gt_path.read_text(encoding="utf-8")).get("expected_vulnerability", "")
+        except Exception:
+            expected_vuln = ""
+    llm_findings: List[Dict[str, Any]] = summary.get("llm_findings", []) or []
+    finding_match = any(_vuln_match(f.get("vuln_class", ""), expected_vuln) for f in llm_findings)
+    detected = bool(summary.get("solved")) or status in {"validated", "supported"} or finding_match
+
     row: Dict[str, Any] = {
         "model": model,
         "fixture": fixture.name,
@@ -114,7 +162,10 @@ def run_eval_case(
         "steps": summary.get("steps", 0),
         "tool_calls": len(summary.get("tool_invocations", [])),
         "validated_findings": len(summary.get("validated_findings", [])),
+        "llm_findings": len(llm_findings),
         "solved": bool(summary.get("solved", False)),
+        "expected_vuln": expected_vuln,
+        "detected": int(detected),
         "loop_detected": loop_detected,
         "watchdog_trips": len(summary.get("watchdog_trips", [])),
         "wall_s": round(wall_s, 2),

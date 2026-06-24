@@ -1,0 +1,5 @@
+services:
+  target:
+    image: llmctf/2020f-web-picgram:latest
+    ports:
+      - "127.0.0.1:9006:5000"

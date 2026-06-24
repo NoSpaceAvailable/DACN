@@ -72,6 +72,11 @@ if SRC.exists() and str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from vapt_orchestrator_safe.engine.eval_case import ABLATION_CONFIGS, run_eval_case  # noqa: E402
+from vapt_orchestrator_safe.config import _load_dotenv_if_present  # noqa: E402
+
+# Pull .env into os.environ so keys (MISTRAL_API_KEY, GEMINI_API_KEY, ...) and
+# MISTRAL_MODEL_ID are picked up without passing --api-key on the CLI.
+_load_dotenv_if_present()
 
 
 _DEFAULT_FIXTURES = [f"web-{i:03d}" for i in range(1, 21)]
@@ -337,6 +342,10 @@ def main() -> int:
                     "steps": 0,
                     "tool_calls": 0,
                     "validated_findings": 0,
+                    "llm_findings": 0,
+                    "solved": False,
+                    "expected_vuln": "",
+                    "detected": 0,
                     "loop_detected": 0,
                     "watchdog_trips": 0,
                     "wall_s": round(wall_s, 2),
@@ -350,11 +359,11 @@ def main() -> int:
             with open(jsonl_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-            flag = "S" if row.get("solved") else ("V" if row["validated_findings"] > 0 else "-")
+            flag = "S" if row.get("solved") else ("D" if row.get("detected") else "-")
             elapsed = time.perf_counter() - bench_t0
             eta = (elapsed / idx) * (total - idx)
             print(f"  [{flag}] {row['status']}  steps={row['steps']}  tools={row['tool_calls']}  "
-                  f"findings={row['validated_findings']}  wall={row['wall_s']:.1f}s")
+                  f"findings={row.get('llm_findings', 0)} (exp={row.get('expected_vuln','?')})  wall={row['wall_s']:.1f}s")
             print(f"  Elapsed {elapsed/60:.1f}m | ETA {eta/60:.1f}m")
             if row.get("error"):
                 print(f"  ERROR: {row['error'][:300]}")
@@ -367,7 +376,11 @@ def main() -> int:
     try:
         import pandas as pd
         df = pd.DataFrame(results)
-        df["detected"] = df["status"].isin(["solved", "validated", "supported"]).astype(int)
+        # "detected" is computed per-row in eval_case (record_finding matches
+        # ground truth, OR oracle-validated, OR solved). Fall back for old rows.
+        if "detected" not in df.columns:
+            df["detected"] = df["status"].isin(["solved", "validated", "supported"]).astype(int)
+        df["detected"] = df["detected"].fillna(0).astype(int)
         df.to_csv(csv_path, index=False)
         summary = {
             "by_config": df.groupby("config")["detected"].mean().round(3).to_dict(),

@@ -1,0 +1,5 @@
+services:
+  target:
+    image: llmctf/2021q-web-no_pass_needed:latest
+    ports:
+      - "127.0.0.1:9008:3000"

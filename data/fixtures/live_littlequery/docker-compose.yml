@@ -1,0 +1,5 @@
+services:
+  target:
+    image: llmctf/2017q-web-littlequery
+    ports:
+      - "127.0.0.1:9001:80"
