@@ -456,8 +456,17 @@ class Dispatcher:
                         "dispatcher", "rate_limit_backoff",
                         {"attempt": rl_attempts + 1, "wait_s": wait},
                     )
-                    logger.warning("Rate limited; backing off %.0fs (retry %d/%d)",
-                                   wait, rl_attempts + 1, self.rate_limit_retries)
+                    # Trace-mode users mistake the logger warning for a new
+                    # step. Emit through _trace with an explicit [retry] label
+                    # so it visibly sits BETWEEN steps and doesn't bump the
+                    # step counter (the retry loops inside _call_llm; the
+                    # outer step counter is untouched).
+                    _trace(f"[retry] rate-limited; sleeping {wait:.0f}s "
+                           f"(attempt {rl_attempts + 1}/{self.rate_limit_retries}, "
+                           f"NOT a new step)")
+                    if not _trace_on():
+                        logger.warning("Rate limited; backing off %.0fs (retry %d/%d)",
+                                       wait, rl_attempts + 1, self.rate_limit_retries)
                     time.sleep(wait)
                     rl_attempts += 1
                     continue
