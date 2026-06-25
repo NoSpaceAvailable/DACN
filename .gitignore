@@ -17,3 +17,4 @@ data/corpus/*.done
 .vscode/*
 NYU_CTF_Bench-main/
 latex/
+.ssh/

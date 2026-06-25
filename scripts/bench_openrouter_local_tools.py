@@ -251,7 +251,7 @@ def main() -> int:
     parser.add_argument("--instructions-file", default=None,
                         help="Path to a file whose content becomes the system prompt. "
                              "Defaults to src/vapt_orchestrator_safe/prompts/dispatcher.md.")
-    parser.add_argument("--reasoning-effort", default="high",
+    parser.add_argument("--reasoning-effort", default="medium",
                         choices=["low", "medium", "high"],
                         help="OpenAI-compatible reasoning knob (gpt-oss honors it).")
     parser.add_argument("--temperature", type=float, default=None)
