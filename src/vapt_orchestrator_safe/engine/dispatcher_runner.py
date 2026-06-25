@@ -89,12 +89,13 @@ _DEFAULT_GOAL = (
     "Follow the recon → signature → analyst → exploit → report pipeline."
 )
 
-_LIVE_GOAL = (
-    "A LIVE instance of the target is running. First read the source to find the "
-    "vulnerability, then EXPLOIT the live target using http_probe / curl to capture "
-    "the flag, and call submit_flag with it. The live target URL is in "
-    "phase_context['live']['target_url']. Finish only after submit_flag is correct "
-    "or you have exhausted options."
+_LIVE_GOAL_TEMPLATE = (
+    "A LIVE instance of the target is running at {target_url} (scope allows ONLY "
+    "this host:port — any other host/port will be blocked by ScopeError).\n"
+    "First call read_source to inspect the application code, identify the "
+    "vulnerability, then EXPLOIT the live target with http_probe / curl against "
+    "{target_url} to capture the flag, and call submit_flag with it.\n"
+    "Finish only after submit_flag is correct or you have exhausted options."
 )
 
 
@@ -389,7 +390,12 @@ class DispatcherRunner:
                 and bool(intake.get("source_files"))
             ),
         )
-        effective_goal = goal or (_LIVE_GOAL if live_cfg else _DEFAULT_GOAL)
+        if goal:
+            effective_goal = goal
+        elif live_cfg and live_lab is not None and live_lab._target is not None:
+            effective_goal = _LIVE_GOAL_TEMPLATE.format(target_url=live_lab._target.target_url)
+        else:
+            effective_goal = _DEFAULT_GOAL
         try:
             result: DispatcherResult = dispatcher.run(effective_goal)
         finally:

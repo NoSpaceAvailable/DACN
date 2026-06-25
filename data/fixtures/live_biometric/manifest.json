@@ -14,7 +14,7 @@
     "compose_file": "docker-compose.yml",
     "target_url": "http://127.0.0.1:9005",
     "ready_path": "/",
-    "ready_timeout_s": 90
+    "ready_timeout_s": 180
   },
   "scope": {
     "allow_hosts": [
