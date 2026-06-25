@@ -27,9 +27,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+
+def _trace_on() -> bool:
+    return os.environ.get("DACN_TRACE", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _trace(msg: str) -> None:
+    if _trace_on():
+        print(msg, flush=True)
+
+
+def _short(v: Any, n: int = 300) -> str:
+    s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
+    return s if len(s) <= n else s[:n] + f"… (+{len(s) - n} chars)"
 
 from langchain_core.messages import (
     AIMessage,
@@ -197,6 +212,15 @@ class Dispatcher:
                 )
             messages.append(response)
 
+            if _trace_on():
+                _trace(f"\n=== step {step} ===")
+                if response.content:
+                    _trace(f"[think] {_short(response.content, 800)}")
+                planned = getattr(response, "tool_calls", None) or []
+                if planned:
+                    _trace(f"[plan]  {len(planned)} tool call(s): "
+                           + ", ".join(c.get('name', '?') for c in planned))
+
             # Watchdog intervention: skip normal tool-call / termination logic
             # and head straight to the next step, which will see the injected
             # correction message.
@@ -271,6 +295,8 @@ class Dispatcher:
                 payload = output if isinstance(output, str) else _to_json(output)
                 messages.append(ToolMessage(content=payload, tool_call_id=call_id))
                 step_invocations.append({"name": name, "args": args, "ok": True})
+                _trace(f"[call]  {name}({_short(args, 200)})")
+                _trace(f"[out]   {_short(payload, 400)}")
 
                 # ``pivot`` is a sentinel tool — returning control to the dispatcher.
                 if name == "pivot":

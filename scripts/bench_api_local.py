@@ -251,10 +251,16 @@ def main() -> int:
                         help="Live-exploit mode: boot each fixture's docker-compose "
                              "(manifest 'live' block) and let the agent capture the flag. "
                              "Metric becomes solve-rate.")
+    parser.add_argument("--trace", action="store_true",
+                        help="Print the agent's per-step thinking, tool calls, and tool "
+                             "outputs to stdout as the run progresses (sets DACN_TRACE=1).")
     parser.add_argument("--outputs-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--list-providers", action="store_true",
                         help="Print the registered providers and exit.")
     args = parser.parse_args()
+
+    if args.trace:
+        os.environ["DACN_TRACE"] = "1"
 
     if args.list_providers:
         for name in sorted(PROVIDERS):
