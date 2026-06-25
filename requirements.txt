@@ -13,3 +13,6 @@ neo4j>=5.20
 
 # Z3 SMT solver for constraint-solving tool (Sprint 7)
 z3-solver>=4.12
+
+# Open-web search backend for WebSearchTool — DuckDuckGo, no API key.
+ddgs>=9.14
