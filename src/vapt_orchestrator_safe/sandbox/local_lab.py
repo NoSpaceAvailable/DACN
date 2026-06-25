@@ -20,14 +20,32 @@ class LocalLabAdapter(BaseLabAdapter):
         path = self.guard.ensure_path(fixture_dir / "transcripts" / "http.json")
         return read_json(path)
 
+    _FAKE_FLAG = "FAKE_FLAG{redacted_solve_for_real_one}"
+
     def load_source_files(self, fixture_dir: Path) -> List[Dict[str, Any]]:
         source_root = self.guard.ensure_path(fixture_dir / "source")
+        # Send every file the wrapper kept in source/ — wrapper strips solve
+        # scripts / writeups / challenge.json. Any literal occurrence of the
+        # real flag inside source is replaced with a placeholder so the agent
+        # gets file structure + code logic without the answer.
+        real_flag = ""
+        gt_path = fixture_dir / "ground_truth.json"
+        if gt_path.exists():
+            try:
+                real_flag = (read_json(gt_path).get("flag") or "").strip()
+            except Exception:  # noqa: BLE001
+                real_flag = ""
         files: List[Dict[str, Any]] = []
-        for path in iter_files(source_root, suffixes={
-            ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".php",
-            ".conf", ".html", ".htm", ".sql", ".mst", ".ejs", ".txt", ".yaml", ".yml",
-        }):
-            files.append({"path": str(path.relative_to(fixture_dir)), "content": read_text(path)})
+        for path in source_root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                content = read_text(path)
+            except (UnicodeDecodeError, OSError):
+                continue
+            if real_flag and real_flag in content:
+                content = content.replace(real_flag, self._FAKE_FLAG)
+            files.append({"path": str(path.relative_to(fixture_dir)), "content": content})
         return files
 
     def load_ground_truth(self, fixture_dir: Path) -> Dict[str, Any]:
