@@ -1,5 +1,5 @@
 {
-  "expected_vulnerability": "",
+  "expected_vulnerability": "AuthBypass",
   "severity": "High",
   "oracle": "flag_captured",
   "flag": "flag{mayb3_1ts_t1m3_4_real_real_escape_string?}",

@@ -1,5 +1,5 @@
 {
-  "expected_vulnerability": "",
+  "expected_vulnerability": "SQLi",
   "severity": "High",
   "oracle": "flag_captured",
   "flag": "flag{wh0_n3ed5_a_p4ssw0rd_anyw4y}",

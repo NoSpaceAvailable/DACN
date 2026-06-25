@@ -98,6 +98,9 @@ def wrap(chal_dir: Path, host_port: int) -> dict:
 
     cj = json.loads(cj_path.read_text(encoding="utf-8"))
     flag = cj.get("flag", "")
+    if "internal_port" not in cj:
+        print(f"  WARN {chal_dir.name}: challenge.json has no internal_port; defaulting to 80. "
+              f"Verify with: docker inspect IMAGE --format '{{.Config.ExposedPorts}}'")
     internal_port = int(cj.get("internal_port", 80))
     image = _image_from_compose(compose_path)
     if not image:

@@ -2,4 +2,4 @@ services:
   target:
     image: llmctf/2017q-web-orange
     ports:
-      - "127.0.0.1:9003:80"
+      - "127.0.0.1:9003:9999"

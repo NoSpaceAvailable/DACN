@@ -1,5 +1,5 @@
 {
-  "expected_vulnerability": "",
+  "expected_vulnerability": "PathTraversal",
   "severity": "High",
   "oracle": "flag_captured",
   "flag": "flag{th4t_w4s_s0m3_sp00ky_scr1pt1ng}",

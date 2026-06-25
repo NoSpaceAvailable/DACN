@@ -1,5 +1,5 @@
 {
-  "expected_vulnerability": "",
+  "expected_vulnerability": "AuthBypass",
   "severity": "High",
   "oracle": "flag_captured",
   "flag": "flag{gunicorn_probably_should_not_do_that}",

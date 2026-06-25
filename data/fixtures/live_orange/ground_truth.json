@@ -1,5 +1,5 @@
 {
-  "expected_vulnerability": "",
+  "expected_vulnerability": "SSRF",
   "severity": "High",
   "oracle": "flag_captured",
   "flag": "flag{thank_you_based_orange_for_this_ctf_challenge}",
