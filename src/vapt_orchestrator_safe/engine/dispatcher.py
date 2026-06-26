@@ -452,9 +452,18 @@ class Dispatcher:
                         continue
                 if self._is_rate_limit(exc) and rl_attempts < self.rate_limit_retries:
                     wait = self.rate_limit_backoff_s * (2 ** rl_attempts)
+                    # Adaptive throttling: each rate-limit hit ratchets up the
+                    # per-call delay floor so we don't immediately burst again
+                    # on the next step. Capped at 10s — free-tier mistral is
+                    # 1 RPS, so a 3-second floor is enough to never hit it
+                    # again, but we step gradually to avoid over-correcting.
+                    old_delay = self.call_delay_s
+                    self.call_delay_s = min(10.0, max(self.call_delay_s + 1.5, 3.0))
                     self.blackboard.log_event(
                         "dispatcher", "rate_limit_backoff",
-                        {"attempt": rl_attempts + 1, "wait_s": wait},
+                        {"attempt": rl_attempts + 1, "wait_s": wait,
+                         "call_delay_s_before": old_delay,
+                         "call_delay_s_after": self.call_delay_s},
                     )
                     # Trace-mode users mistake the logger warning for a new
                     # step. Emit through _trace with an explicit [retry] label
@@ -463,10 +472,13 @@ class Dispatcher:
                     # outer step counter is untouched).
                     _trace(f"[retry] rate-limited; sleeping {wait:.0f}s "
                            f"(attempt {rl_attempts + 1}/{self.rate_limit_retries}, "
-                           f"NOT a new step)")
+                           f"NOT a new step) — bumping call_delay {old_delay:.1f}→"
+                           f"{self.call_delay_s:.1f}s")
                     if not _trace_on():
-                        logger.warning("Rate limited; backing off %.0fs (retry %d/%d)",
-                                       wait, rl_attempts + 1, self.rate_limit_retries)
+                        logger.warning("Rate limited; backing off %.0fs (retry %d/%d), "
+                                       "call_delay→%.1fs",
+                                       wait, rl_attempts + 1, self.rate_limit_retries,
+                                       self.call_delay_s)
                     time.sleep(wait)
                     rl_attempts += 1
                     continue
