@@ -29,7 +29,7 @@ from vapt_orchestrator_safe.tools.base import BaseTool, ToolResult
 class _WebSearchArgs(BaseModel):
     model_config = ConfigDict(extra="ignore")
     query: str = Field(description="Search query.")
-    max_results: int = Field(default=8, ge=1, le=15)
+    max_results: int = Field(default=10, ge=1, le=10)
 
 
 class WebSearchTool(BaseTool):
@@ -49,7 +49,7 @@ class WebSearchTool(BaseTool):
         query = (kwargs.get("query") or "").strip()
         if not query:
             return ToolResult(stderr="query is required.", exit_code=2)
-        max_results = int(kwargs.get("max_results", 8))
+        max_results = min(int(kwargs.get("max_results", 10)), 10)
 
         try:
             from ddgs import DDGS

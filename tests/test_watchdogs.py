@@ -221,15 +221,18 @@ def test_dispatcher_stream_completes_normally_when_no_watchdog_trips(tmp_path):
 
 
 # ── DispatcherRunner wiring ─────────────────────────────────────────────
-def test_runner_enables_mid_thinking_when_flag_set(tmp_path):
-    """Smoke: the runner logs mid_thinking.enabled when enable_mid_thinking=True
-    and picks up default focus from the manifest."""
-    from unittest.mock import MagicMock
+def test_runner_overrides_mid_thinking_flag(tmp_path):
+    """ponytail: watchdogs tạm tắt while harness baseline is being evaluated.
+    The runner ignores the enable_mid_thinking=True argument and treats it
+    as False until the override in dispatcher_runner.__init__ is removed."""
     from vapt_orchestrator_safe.engine.dispatcher_runner import DispatcherRunner
 
-    # Use a streaming-capable fake model.
-    turn1 = _chunks("quick response, done.")
-    chat = _StreamingChat(stream_scripts=[turn1])
+    # Mid-thinking is overridden → dispatcher uses .invoke() not .stream().
+    turn1 = _chunks("unused — stream path is bypassed when watchdog override is on")
+    chat = _StreamingChat(
+        stream_scripts=[turn1],
+        invoke_script=[AIMessage(content="quick response, done.", tool_calls=[])],
+    )
 
     fixture = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "challenge_idor_01"
     summary = DispatcherRunner(
@@ -237,12 +240,12 @@ def test_runner_enables_mid_thinking_when_flag_set(tmp_path):
         chat_model=chat, chat_model_backend_spec="scripted",
         max_steps=3, enable_sandbox=False,
         enable_mid_thinking=True,
-        mid_thinking_max_drift_chars=50_000,  # effectively off — just wiring check
-        require_report=False,  # wiring check only; don't nudge the short script
+        mid_thinking_max_drift_chars=50_000,
+        require_report=False,
     ).run_fixture(fixture)
 
     import json
     memory = json.loads((Path(summary["output_dir"]) / "memory.json").read_text())
     messages = [e["message"] for e in memory["events"]]
-    assert "mid_thinking.enabled" in messages
+    assert "mid_thinking.enabled" not in messages
     assert summary["watchdog_trips"] == []

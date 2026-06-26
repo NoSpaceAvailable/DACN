@@ -56,14 +56,13 @@ class ToolResult:
         return asdict(self)
 
     def summary_for_llm(self, limit: int = _TRUNCATE_DEFAULT) -> str:
-        """Compact, LLM-friendly rendering. The full payload is in artifacts."""
-        head = f"[exit={self.exit_code} t={self.duration_ms}ms"
-        if self.truncated:
-            head += " TRUNCATED"
-        head += "]"
+        """LLM-facing rendering. ponytail: tool output sent in full — let the
+        model read what it needs. The ``limit`` arg is kept for API stability
+        but no longer trims. The ``truncated`` flag remains accurate (set by
+        ``BaseTool._run`` against the original ``truncate_at`` value) so callers
+        can still observe whether the size threshold was crossed."""
+        head = f"[exit={self.exit_code} t={self.duration_ms}ms]"
         body = self.stdout if self.exit_code == 0 else (self.stderr or self.stdout)
-        if len(body) > limit:
-            body = body[:limit] + "\n... (truncated)"
         return f"{head}\n{body}"
 
 

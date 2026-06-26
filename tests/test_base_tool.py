@@ -35,11 +35,12 @@ def test_tool_result_summary_includes_exit_and_duration():
     assert "hello" in s
 
 
-def test_tool_result_summary_truncates():
-    r = ToolResult(stdout="x" * 5000, exit_code=0, duration_ms=1)
+def test_tool_result_summary_does_not_truncate():
+    """ponytail: summary_for_llm sends full body — agent decides what to read."""
+    r = ToolResult(stdout="Z" * 5000, exit_code=0, duration_ms=1)
     s = r.summary_for_llm(limit=100)
-    assert "(truncated)" in s
-    assert len(s) < 5000
+    assert "(truncated)" not in s
+    assert s.count("Z") == 5000
 
 
 def test_tool_result_failure_summary_uses_stderr():
@@ -148,8 +149,14 @@ class BigOutputTool(BaseTool):
 
 
 def test_truncated_flag_set_when_output_exceeds_limit(tmp_path):
+    """The size-threshold flag still tracks for telemetry; full output now
+    reaches both the LLM (no trimming) and the artifact store."""
     bb = _bb(tmp_path)
     out = BigOutputTool().bind_blackboard(bb).invoke({})
-    assert "TRUNCATED" in out
-    # Full payload is still in artifacts, untruncated.
-    assert len(bb.artifacts[0]["payload"]["result"]["stdout"]) == 500
+    # LLM-facing payload is full — no TRUNCATED marker, full 500-char body.
+    assert "TRUNCATED" not in out
+    assert out.count("A") == 500
+    # Artifact still has the full payload AND tracks the size-threshold flag.
+    art = bb.artifacts[0]["payload"]["result"]
+    assert len(art["stdout"]) == 500
+    assert art["truncated"] is True

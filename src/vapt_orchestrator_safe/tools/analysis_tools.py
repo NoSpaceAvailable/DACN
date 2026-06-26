@@ -68,24 +68,18 @@ class ReadSourceTool(BaseTool):
             return ToolResult(stderr="No source files available for this target.", exit_code=2)
 
         path = kwargs.get("path")
-        per_file = int(kwargs.get("max_chars", _MAX_FILE_CHARS))
 
+        # ponytail: per-file / batch truncation disabled — agent reads full
+        # source. The wrapper strips solve scripts + heavy binaries upstream,
+        # so what reaches here is already the slice the agent needs.
         if not path:
-            # Batch: return every file at once (fewer round-trips). Spread the
-            # total budget across files so one huge file can't starve the rest.
-            budget = _MAX_ALL_CHARS
-            share = max(800, budget // max(1, len(files)))
-            blocks = []
-            for f in files:
-                content = f.get("content", "")
-                cap = min(per_file, share)
-                truncated = len(content) > cap
-                body = content[:cap] + ("\n... (truncated)" if truncated else "")
-                blocks.append({"path": f.get("path", "?"), "truncated": truncated, "content": body})
+            blocks = [
+                {"path": f.get("path", "?"), "truncated": False, "content": f.get("content", "")}
+                for f in files
+            ]
             return ToolResult(stdout=json.dumps(
                 {"files": blocks, "count": len(blocks), "mode": "all"}, ensure_ascii=False))
 
-        # Single file (exact path or suffix match).
         match = next(
             (f for f in files if f.get("path") == path or str(f.get("path", "")).endswith(path)),
             None,
@@ -93,11 +87,9 @@ class ReadSourceTool(BaseTool):
         if match is None:
             avail = [f.get("path", "?") for f in files]
             return ToolResult(stderr=f"No source file matching {path!r}. Available: {avail}", exit_code=2)
-        content = match.get("content", "")
-        truncated = len(content) > per_file
-        body = content[:per_file] + ("\n... (truncated)" if truncated else "")
         return ToolResult(stdout=json.dumps(
-            {"path": match.get("path"), "truncated": truncated, "content": body}, ensure_ascii=False))
+            {"path": match.get("path"), "truncated": False, "content": match.get("content", "")},
+            ensure_ascii=False))
 
 
 # ── record_finding ───────────────────────────────────────────────────────--
