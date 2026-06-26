@@ -252,6 +252,30 @@ class FetchWriteupTool(BaseTool):
         return self._render(payload, from_cache=False)
 
     # ── HTTP fetch ────────────────────────────────────────────────────────────
+    # Stack Overflow / ServerFault / many docs CDNs return 403 to bot-flavoured
+    # User-Agents (including the previous "DACN-vapt-orchestrator/1.0" string).
+    # Use a current real-browser UA so doc-reading paths actually load. We
+    # still rate-limit via the host allowlist; this is a read-only fetch of
+    # public pages we cited from our own search results.
+    _BROWSER_HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,*/*;q=0.8"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
     def _fetch_live(self, url: str) -> tuple[str, Optional[str]]:
         try:
             import requests
@@ -260,19 +284,16 @@ class FetchWriteupTool(BaseTool):
         r = requests.get(
             url,
             timeout=self._timeout_s,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (compatible; DACN-vapt-orchestrator/1.0; "
-                    "+https://github.com/uit-dacn)"
-                ),
-                "Accept": "text/html,application/xhtml+xml,*/*;q=0.5",
-                "Accept-Language": "en-US,en;q=0.8",
-            },
+            headers=self._BROWSER_HEADERS,
             allow_redirects=True,
         )
         if r.status_code in (403, 429):
-            time.sleep(10.0)
-            r = requests.get(url, timeout=self._timeout_s, headers={"User-Agent": "Mozilla/5.0"})
+            # Some hosts rate-limit aggressively; one retry with backoff.
+            time.sleep(5.0)
+            r = requests.get(
+                url, timeout=self._timeout_s,
+                headers=self._BROWSER_HEADERS, allow_redirects=True,
+            )
         if r.status_code != 200:
             raise RuntimeError(f"HTTP {r.status_code} from {url}")
         ctype = (r.headers.get("Content-Type") or "").lower()

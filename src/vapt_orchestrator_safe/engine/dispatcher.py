@@ -154,9 +154,65 @@ class Dispatcher:
         self.keep_recent_tool_msgs = keep_recent_tool_msgs
         self.compact_over_chars = compact_over_chars
 
+        # Mechanism-research nudge: count consecutive exploit-class tool calls
+        # without any mechanism-research-class call in between. After
+        # `research_nudge_threshold`, inject a HumanMessage telling the model
+        # to read docs about the relevant component before the next exploit.
+        # Don't trust model self-discipline on the prompt-side rule alone.
+        self._consecutive_exploits = 0
+        self._research_nudges_fired = 0
+        self.research_nudge_threshold = 5
+        self.research_nudge_max = 3
+
         for tool in tools:
             if hasattr(tool, "bind_blackboard"):
                 tool.bind_blackboard(blackboard)
+
+    # Tool families used to decide when to inject the mechanism-research nudge.
+    _EXPLOIT_CLASS = frozenset(
+        {"http_probe", "curl_request", "invoke_exploit", "nmap_scan", "blind_timing"}
+    )
+    _RESEARCH_CLASS = frozenset(
+        {"web_search", "fetch_writeup", "read_source", "query_kg", "query_rag",
+         "query_cve", "query_ghsa", "query_nuclei", "query_exploitdb"}
+    )
+
+    def _update_research_streak(self, invocations: Sequence[Dict[str, Any]]) -> None:
+        """After each step, advance the consecutive-exploits counter and
+        queue a HumanMessage correction if the model is stuck in
+        guess-and-check mode."""
+        if not invocations:
+            return
+        # Reset if ANY research-class call appeared this step.
+        for inv in invocations:
+            if inv.get("name") in self._RESEARCH_CLASS:
+                self._consecutive_exploits = 0
+                return
+        # Otherwise add exploit-class calls.
+        for inv in invocations:
+            if inv.get("name") in self._EXPLOIT_CLASS:
+                self._consecutive_exploits += 1
+        if (self._consecutive_exploits >= self.research_nudge_threshold
+                and self._research_nudges_fired < self.research_nudge_max):
+            self._research_nudges_fired += 1
+            self._consecutive_exploits = 0
+            self._pending_correction = (
+                f"[dispatcher_guard] You have made {self.research_nudge_threshold}+ "
+                f"exploit/probe attempts without any mechanism-research call "
+                f"(web_search / fetch_writeup / read_source / query_kg / "
+                f"query_cve). Per operating rule #10: you are stuck on a "
+                f"hypothesis and don't know the exact mechanism (header naming, "
+                f"config directive, env var, middleware order). BEFORE the next "
+                f"exploit attempt, you MUST call web_search or fetch_writeup "
+                f"with a query about HOW the relevant component works (not how "
+                f"to bypass it). Then use what you learn to construct the next "
+                f"exploit. Skipping this step is the biggest cause of failure."
+            )
+            self.blackboard.log_event(
+                "dispatcher", "research_nudge",
+                {"fired": self._research_nudges_fired,
+                 "threshold": self.research_nudge_threshold},
+            )
 
     # ── construction helpers ─────────────────────────────────────────────
     @staticmethod
@@ -304,6 +360,7 @@ class Dispatcher:
                     # Still continue the loop; the LLM will pick a new branch next turn.
 
             invocations.extend(step_invocations)
+            self._update_research_streak(step_invocations)
             if self.hook and not self.hook.after_step(step, response, step_invocations):
                 return DispatcherResult(
                     final_text=None,
