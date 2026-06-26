@@ -97,8 +97,16 @@ class ScopeGuard:
         if not parsed.hostname:
             raise ScopeError(f"URL {url!r} has no hostname")
         self.check_host(parsed.hostname)
-        if parsed.port is not None:
-            self.check_port(parsed.port)
+        # urlparse(url).port raises ValueError on malformed port strings
+        # (e.g. trailing sentence punctuation '9007.' from mid-thinking text).
+        # Re-cast as ScopeError so the watchdog / tool layer treats it as a
+        # scope violation instead of crashing the run.
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ScopeError(f"URL {url!r} has malformed port: {exc}") from exc
+        if port is not None:
+            self.check_port(port)
 
     # ── batching ─────────────────────────────────────────────────────────
     def check_hosts(self, hosts: Iterable[str]) -> None:

@@ -74,6 +74,19 @@ def test_scope_watchdog_ignores_url_already_seen():
     assert wd.check("http://evil.example/ and more text").tripped is False
 
 
+def test_scope_watchdog_strips_trailing_punctuation():
+    """Greedy URL regex captures sentence-terminating '.', ',', '!', '?', etc.
+    Treating 'http://127.0.0.1:9007.' literally makes urlparse.port raise
+    ValueError on '9007.' — used to crash the whole run."""
+    guard = ScopeGuard(Scope.from_manifest(
+        {"scope": {"allow_hosts": ["127.0.0.1"], "allow_ports": [9007]}}
+    ))
+    wd = ScopeWatchdog(guard)
+    # Trailing period belongs to the sentence, not the URL. After strip,
+    # the URL is in-scope → no trip, no crash.
+    assert wd.check("I will hit http://127.0.0.1:9007. Next step is...").tripped is False
+
+
 def test_scope_watchdog_skips_partial_url_at_buffer_end():
     """URL at buffer end may still be streaming — defer judgement until a
     terminator char arrives (otherwise we trip on every chunk of a typed-out

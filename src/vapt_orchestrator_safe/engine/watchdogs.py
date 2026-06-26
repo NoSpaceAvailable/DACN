@@ -123,7 +123,13 @@ class ScopeWatchdog(Watchdog):
             # trips this watchdog every single chunk. Wait for a terminator.
             if m.end() >= len(buffer_text):
                 continue
-            if url in self._already_seen:
+            # The greedy regex also captures trailing sentence punctuation
+            # (e.g. 'http://127.0.0.1:9007.' at the end of a sentence). That
+            # makes urlparse(...).port raise ValueError on '9007.' and crash
+            # the whole run, not just trip the watchdog. Strip trailing
+            # punctuation before parsing.
+            url = url.rstrip(".,!?:;")
+            if not url or url in self._already_seen:
                 continue
             self._already_seen.add(url)
             try:
@@ -139,6 +145,12 @@ class ScopeWatchdog(Watchdog):
                         f"target only. Restate your plan using the allowed host."
                     ),
                 )
+            except Exception:  # noqa: BLE001
+                # Defensive: a malformed URL slipping through (urlparse
+                # ValueError on a weird port, etc.) should never kill the run.
+                # Just skip — the corresponding http_probe call will surface
+                # the real error if the model actually invokes it.
+                continue
         return _OK
 
 
