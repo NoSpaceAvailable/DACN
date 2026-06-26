@@ -115,8 +115,14 @@ class ScopeWatchdog(Watchdog):
         self._already_seen: set = set()
 
     def check(self, buffer_text: str) -> WatchdogVerdict:
-        for url in _URL_RE.findall(buffer_text):
-            # Avoid re-checking the same URL after more chunks arrive.
+        for m in _URL_RE.finditer(buffer_text):
+            url = m.group(0)
+            # Skip URLs that end at the buffer tail — they may still be
+            # streaming (e.g. 'http://127.0.0.' before the trailing '1:9007'
+            # arrives), and parsing them prematurely yields a bogus host that
+            # trips this watchdog every single chunk. Wait for a terminator.
+            if m.end() >= len(buffer_text):
+                continue
             if url in self._already_seen:
                 continue
             self._already_seen.add(url)

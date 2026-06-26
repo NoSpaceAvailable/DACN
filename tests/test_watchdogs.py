@@ -68,10 +68,24 @@ def test_scope_watchdog_allows_in_scope_url():
 def test_scope_watchdog_ignores_url_already_seen():
     guard = ScopeGuard(Scope.from_manifest({"scope": {"allow_hosts": ["127.0.0.1"]}}))
     wd = ScopeWatchdog(guard)
-    # First time: fires.
-    assert wd.check("http://evil.example/").tripped is True
+    # First time: fires. Trailing space marks URL as complete (not still streaming).
+    assert wd.check("http://evil.example/ ").tripped is True
     # Second time (same URL): silent — so we don't fire again on the same chunk content.
     assert wd.check("http://evil.example/ and more text").tripped is False
+
+
+def test_scope_watchdog_skips_partial_url_at_buffer_end():
+    """URL at buffer end may still be streaming — defer judgement until a
+    terminator char arrives (otherwise we trip on every chunk of a typed-out
+    URL like 'http://127.', 'http://127.0.', 'http://127.0.0.', …)."""
+    guard = ScopeGuard(Scope.from_manifest(
+        {"scope": {"allow_hosts": ["127.0.0.1"], "allow_ports": [9007]}}
+    ))
+    wd = ScopeWatchdog(guard)
+    # Partial URL — buffer ends mid-IP. Don't trip.
+    assert wd.check("I will exploit http://127.0.0.").tripped is False
+    # Once a terminator arrives, judgement resumes (in-scope → silent).
+    assert wd.check("I will exploit http://127.0.0.1:9007/key now.").tripped is False
 
 
 # ── LoopWatchdog ────────────────────────────────────────────────────────
