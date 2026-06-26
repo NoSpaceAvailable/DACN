@@ -148,7 +148,12 @@ _HOST_ALLOWLIST = {
 
 _CACHE_TTL_SECONDS = 30 * 24 * 3600
 _APPROX_CHARS_PER_TOKEN = 4
-_MAX_RETURN_CHARS = 12000
+# Docs ≤ this go inline in full. Bigger ones are saved to the run's scratch
+# dir; the tool returns a preview + path so the agent can `grep_file` for
+# specific sections instead of paying the token cost to re-load the whole doc.
+_INLINE_FULL_LIMIT = 30000
+_PREVIEW_HEAD = 5000
+_PREVIEW_TAIL = 2000
 
 
 def _approx_tokens(text: str) -> int:
@@ -340,19 +345,28 @@ class FetchWriteupTool(BaseTool):
         focus: str,
     ) -> Dict[str, Any]:
         focused = _focus_extract(text, focus) if focus else ""
-        # Decide what to return to the model. Prefer the focused extract when
-        # available; otherwise return a head-tail snapshot capped at _MAX_RETURN_CHARS.
+        saved_to = self._save_to_scratch(url, text)
+
         if focused:
             body = focused
             mode = "focus"
-        elif len(text) <= _MAX_RETURN_CHARS:
+        elif len(text) <= _INLINE_FULL_LIMIT:
             body = text
             mode = "full"
         else:
-            head = text[: _MAX_RETURN_CHARS - 1500]
-            tail = text[-1500:]
-            body = head + "\n\n... [middle truncated] ...\n\n" + tail
-            mode = "head_tail"
+            # Doc is large: send a head + tail preview inline, point the agent
+            # at the saved scratch file for targeted grep_file lookups. Avoids
+            # blowing the context budget on a single fetch while keeping the
+            # full text accessible.
+            head = text[:_PREVIEW_HEAD]
+            tail = text[-_PREVIEW_TAIL:]
+            grep_hint = (
+                f"\n\n... [middle elided — full text saved to {saved_to}; "
+                f"use grep_file(path={saved_to!r}, pattern=<regex>) to read "
+                f"specific sections] ...\n\n"
+            )
+            body = head + grep_hint + tail
+            mode = "preview_with_scratch"
         return {
             "url": url,
             "host": host,
@@ -360,8 +374,31 @@ class FetchWriteupTool(BaseTool):
             "mode": mode,
             "focus": focus,
             "char_count": len(text),
+            "saved_to": saved_to,
             "content": body,
         }
+
+    def _save_to_scratch(self, url: str, text: str) -> Optional[str]:
+        """Write the full fetched text to ``<run_dir>/scratch/`` so the agent
+        can grep it later via ``grep_file``. Returns the path as a string, or
+        ``None`` when no blackboard / run_dir is bound (test harness path).
+        """
+        bb = self._blackboard
+        if bb is None:
+            return None
+        run_dir = getattr(bb, "run_dir", None)
+        if run_dir is None:
+            return None
+        scratch = Path(run_dir) / "scratch"
+        try:
+            scratch.mkdir(parents=True, exist_ok=True)
+            key = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+            path = scratch / f"writeup_{key}.txt"
+            if not path.exists():
+                path.write_text(text, encoding="utf-8")
+            return str(path)
+        except OSError:
+            return None
 
     def _render(self, payload: Dict[str, Any], *, from_cache: bool) -> ToolResult:
         text = payload.get("content", "")

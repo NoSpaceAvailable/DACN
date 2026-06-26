@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -164,6 +165,20 @@ class Dispatcher:
         self.research_nudge_threshold = 5
         self.research_nudge_max = 3
 
+        # Unusual-directive nudge: tracks tokens the model name-drops in its
+        # reasoning (backtick-quoted snake_case identifiers) and forces a
+        # web_search about each one within `directive_nudge_threshold` turns
+        # if the model never researched it. Hard-enforces rule 0b's
+        # "no self-dismiss" clause — past runs have shown the model can
+        # mention `underscores_in_headers` or similar then drop it without
+        # ever looking up what it does.
+        self._mentioned_directives: Dict[str, int] = {}
+        self._researched_tokens: set = set()
+        self._directive_nudges_fired = 0
+        self.directive_nudge_threshold = 2  # turns to wait before nudging
+        self.directive_nudge_max = 2
+        self._current_step = 0
+
         for tool in tools:
             if hasattr(tool, "bind_blackboard"):
                 tool.bind_blackboard(blackboard)
@@ -174,8 +189,100 @@ class Dispatcher:
     )
     _RESEARCH_CLASS = frozenset(
         {"web_search", "fetch_writeup", "read_source", "query_kg", "query_rag",
-         "query_cve", "query_ghsa", "query_nuclei", "query_exploitdb"}
+         "query_cve", "query_ghsa", "query_nuclei", "query_exploitdb",
+         "grep_file"}
     )
+
+    # Backtick-quoted snake_case identifier in the model's reasoning. Catches
+    # nginx/apache directives, env var names, framework options. The token
+    # must contain an underscore (filters out plain English in backticks).
+    _DIRECTIVE_RE = re.compile(r"`([a-z_][a-z0-9_]{4,39})`")
+
+    # Tokens that are NOT real directives — harness vocabulary, common
+    # request-flow names. Bypassed by the regex when they appear in backticks
+    # but we don't want to nudge the model to research them.
+    _DIRECTIVE_NOISE = frozenset({
+        # Harness internals
+        "tool_call", "tool_calls", "tool_name", "tool_names", "args_schema",
+        "vuln_class", "attack_family", "phase_context", "loop_signature",
+        "loop_signatures", "max_steps", "step_invocations", "blackboard",
+        "set_phase_context", "log_event", "ground_truth", "max_chars",
+        "max_results", "max_time", "max_body", "max_body_chars",
+        # Tool names
+        "read_source", "record_finding", "fetch_writeup", "web_search",
+        "grep_file", "query_kg", "query_cve", "query_ghsa", "query_rag",
+        "query_nuclei", "query_exploitdb", "invoke_recon", "invoke_signature",
+        "invoke_analyst", "invoke_exploit", "invoke_report", "http_probe",
+        "curl_request", "nmap_scan", "blind_timing", "z3_solve",
+        "hashcat_crack", "run_python_sandbox", "submit_flag",
+        # Field names from challenge sources commonly mentioned — not directives
+        "key_id", "user_id", "admin_user", "csrf_token", "session_id",
+    })
+
+    def _extract_directives(self, content: str) -> set:
+        if not content:
+            return set()
+        return {
+            m for m in self._DIRECTIVE_RE.findall(content)
+            if "_" in m and m not in self._DIRECTIVE_NOISE
+        }
+
+    def _update_directive_tracking(
+        self, response: AIMessage, step_invocations: Sequence[Dict[str, Any]],
+    ) -> None:
+        """Track directives mentioned in the model's reasoning vs ones it
+        researched. If a token is name-dropped but never researched within
+        ``directive_nudge_threshold`` turns, inject a forced research nudge
+        for the next turn. Bounded by ``directive_nudge_max``."""
+        # 1. Add newly-mentioned tokens (skip ones already researched).
+        mentioned = self._extract_directives(response.content or "")
+        for token in mentioned:
+            if token in self._researched_tokens:
+                continue
+            self._mentioned_directives.setdefault(token, self._current_step)
+
+        # 2. Mark tokens as researched if they appeared in any research-class
+        # tool call's args this step.
+        for inv in step_invocations:
+            if inv.get("name") not in self._RESEARCH_CLASS:
+                continue
+            args_str = json.dumps(inv.get("args") or {}, default=str).lower()
+            for token in list(self._mentioned_directives.keys()):
+                if token in args_str:
+                    self._researched_tokens.add(token)
+                    self._mentioned_directives.pop(token, None)
+
+        # 3. Nudge any token that's been waiting > threshold turns.
+        if self._directive_nudges_fired >= self.directive_nudge_max:
+            return
+        stale = [
+            (t, s) for t, s in self._mentioned_directives.items()
+            if (self._current_step - s) >= self.directive_nudge_threshold
+        ]
+        if not stale:
+            return
+        self._directive_nudges_fired += 1
+        tokens = ", ".join(f"`{t}`" for t, _ in stale[:3])
+        self._pending_correction = (
+            f"[dispatcher_guard] You mentioned {tokens} in your reasoning "
+            f"{self.directive_nudge_threshold}+ turns ago but never issued a "
+            f"web_search or fetch_writeup query about it. Per rule 0b "
+            f"(NO self-dismiss): the phrase 'I don't see how this matters' "
+            f"is the trigger to research, not to dismiss. On your next turn, "
+            f"call web_search with a mechanism query for each token — phrase "
+            f"it as 'what does <directive> control' and 'what attacks does "
+            f"the default-off state prevent / what use case requires "
+            f"enabling it'. The answer is usually the solve path."
+        )
+        # Stop tracking these so we don't re-nudge the same set.
+        for token, _ in stale:
+            self._researched_tokens.add(token)
+            self._mentioned_directives.pop(token, None)
+        self.blackboard.log_event(
+            "dispatcher", "directive_nudge",
+            {"tokens": [t for t, _ in stale[:3]],
+             "fired": self._directive_nudges_fired},
+        )
 
     def _update_research_streak(self, invocations: Sequence[Dict[str, Any]]) -> None:
         """After each step, advance the consecutive-exploits counter and
@@ -233,6 +340,7 @@ class Dispatcher:
         invocations: List[Dict[str, Any]] = []
 
         for step in range(1, self.max_steps + 1):
+            self._current_step = step
             # Inject any watchdog correction queued from the previous step.
             if self._pending_correction is not None:
                 messages.append(HumanMessage(content=self._pending_correction))
@@ -361,6 +469,7 @@ class Dispatcher:
 
             invocations.extend(step_invocations)
             self._update_research_streak(step_invocations)
+            self._update_directive_tracking(response, step_invocations)
             if self.hook and not self.hook.after_step(step, response, step_invocations):
                 return DispatcherResult(
                     final_text=None,

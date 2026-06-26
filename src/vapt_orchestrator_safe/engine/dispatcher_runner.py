@@ -341,13 +341,17 @@ class DispatcherRunner:
             tools.append(QueryNucleiTool())
             tools.append(QueryExploitDBTool())
             tools.append(FetchWriteupTool())
-            # Open-web research channel — for logic bugs at the seam between
-            # components (WSGI SCRIPT_NAME, nginx underscores_in_headers, Meteor
-            # pub/sub, …) the curated corpora return nothing. WebSearchTool
-            # surfaces top hits; agent then pipes the URL into fetch_writeup.
+            # Open-web research channel for logic bugs at the seam between
+            # components — curated corpora return nothing for stack quirks.
+            # The agent gets top hits then pipes the URL into fetch_writeup.
             # ponytail: no anti-leak filter — evaluating raw baseline first.
             from vapt_orchestrator_safe.tools.web_search import WebSearchTool
+            from vapt_orchestrator_safe.tools.grep_file_tool import GrepFileTool
             tools.append(WebSearchTool())
+            # grep_file pairs with fetch_writeup: large docs are saved to the
+            # run's scratch dir and the agent greps targeted sections instead
+            # of paying token cost to re-load the whole page.
+            tools.append(GrepFileTool())
 
         chat_model = self._chat_model
         if chat_model is None:
