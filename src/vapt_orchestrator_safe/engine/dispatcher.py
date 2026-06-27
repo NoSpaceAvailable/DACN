@@ -408,7 +408,10 @@ class Dispatcher:
             # dispatcher's per-step call is the only thing to throttle.
             if self.call_delay_s and step > 1:
                 time.sleep(self.call_delay_s)
+            _trace(f"[step {step}] calling LLM ({sum(len(getattr(m, 'content', '') or '') for m in messages)} chars in context)...")
+            _llm_t0 = time.perf_counter()
             response, intervened = self._call_llm(messages)
+            _trace(f"[step {step}] LLM responded in {time.perf_counter() - _llm_t0:.1f}s")
             if not isinstance(response, AIMessage):
                 response = AIMessage(
                     content=getattr(response, "content", str(response)),
