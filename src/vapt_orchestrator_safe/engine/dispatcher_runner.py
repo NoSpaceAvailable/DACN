@@ -160,9 +160,7 @@ class DispatcherRunner:
         self.enable_kg = enable_kg
         self._kg_override = kg
         self.enable_specialized_tools = enable_specialized_tools
-        # ponytail: watchdogs (drift / scope / loop) tạm tắt — đang đánh giá
-        # harness baseline. Bỏ dòng override này khi muốn bật lại.
-        self.enable_mid_thinking = False  # was: enable_mid_thinking
+        self.enable_mid_thinking = enable_mid_thinking
         self.require_report = require_report
         self.enable_source_analysis = enable_source_analysis
         self.call_delay_s = call_delay_s

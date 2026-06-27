@@ -258,6 +258,13 @@ def main() -> int:
                              "openrouter/gemini/groq (10-RPM tiers), 0 for paid/unlimited. "
                              "Auto-bumps up to 30s after each rate-limit hit "
                              "(adaptive throttling).")
+    parser.add_argument("--reasoning-effort", choices=("low", "medium", "high"), default=None,
+                        help="Enable reasoning / thinking mode for models that support it. "
+                             "Forwarded as `reasoning_effort` in the request body — works for "
+                             "OpenAI o-series/gpt-5, Gemini (maps to thinking_budget via the "
+                             "OpenAI-compat endpoint), and any OpenAI-compatible provider that "
+                             "accepts the param. Anthropic's `thinking` block uses a different "
+                             "shape and is not handled here.")
     parser.add_argument("--require-source-read", action="store_true",
                         help="Force the model to read the source before finishing "
                              "(completion guard for genuine source analysis).")
@@ -364,6 +371,7 @@ def main() -> int:
                     call_delay_s=args.call_delay,
                     require_source_read=args.require_source_read,
                     enable_live_exploit=args.live,
+                    reasoning_effort=args.reasoning_effort,
                 )
             except Exception as exc:
                 wall_s = time.perf_counter() - t0

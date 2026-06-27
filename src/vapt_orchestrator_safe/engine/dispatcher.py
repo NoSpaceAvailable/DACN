@@ -123,7 +123,7 @@ class Dispatcher:
         hook: Optional[DispatcherHook] = None,
         watchdogs: Optional[Sequence[Watchdog]] = None,
         require_report: bool = False,
-        max_completion_nudges: int = 2,
+        max_completion_nudges: int = 5,
         call_delay_s: float = 0.0,
         require_source_read: bool = False,
         rate_limit_retries: int = 4,

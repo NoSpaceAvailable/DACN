@@ -221,14 +221,12 @@ def test_dispatcher_stream_completes_normally_when_no_watchdog_trips(tmp_path):
 
 
 # ── DispatcherRunner wiring ─────────────────────────────────────────────
-def test_runner_overrides_mid_thinking_flag(tmp_path):
-    """ponytail: watchdogs tạm tắt while harness baseline is being evaluated.
-    The runner ignores the enable_mid_thinking=True argument and treats it
-    as False until the override in dispatcher_runner.__init__ is removed."""
+def test_runner_honors_mid_thinking_flag(tmp_path):
+    """The runner threads enable_mid_thinking=True through and wires the
+    watchdogs — confirms the C1 contribution stays plumbed end-to-end."""
     from vapt_orchestrator_safe.engine.dispatcher_runner import DispatcherRunner
 
-    # Mid-thinking is overridden → dispatcher uses .invoke() not .stream().
-    turn1 = _chunks("unused — stream path is bypassed when watchdog override is on")
+    turn1 = _chunks("looking at the manifest, will pick a tool next.")
     chat = _StreamingChat(
         stream_scripts=[turn1],
         invoke_script=[AIMessage(content="quick response, done.", tool_calls=[])],
@@ -247,5 +245,4 @@ def test_runner_overrides_mid_thinking_flag(tmp_path):
     import json
     memory = json.loads((Path(summary["output_dir"]) / "memory.json").read_text())
     messages = [e["message"] for e in memory["events"]]
-    assert "mid_thinking.enabled" not in messages
-    assert summary["watchdog_trips"] == []
+    assert "mid_thinking.enabled" in messages

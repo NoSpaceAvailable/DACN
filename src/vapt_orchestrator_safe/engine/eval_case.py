@@ -12,7 +12,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from vapt_orchestrator_safe.engine.dispatcher_runner import DispatcherRunner
 from vapt_orchestrator_safe.llm.backend_factory import build_chat_model
@@ -76,6 +76,7 @@ def run_eval_case(
     call_delay_s: float = 0.0,
     require_source_read: bool = False,
     enable_live_exploit: bool = False,
+    reasoning_effort: Optional[str] = None,
 ) -> Dict[str, Any]:
     if config_name not in ABLATION_CONFIGS:
         raise ValueError(f"Unknown config {config_name!r}; expected one of {sorted(ABLATION_CONFIGS)}")
@@ -96,11 +97,15 @@ def run_eval_case(
             default_options={"temperature": temperature, "num_ctx": num_ctx},
         )
     else:
+        extra = {}
+        if reasoning_effort:
+            extra["reasoning_effort"] = reasoning_effort
         chat_model = build_chat_model(
             backend_spec,
             temperature=temperature,
             timeout=request_timeout_s,
             max_retries=5,
+            **extra,
         )
         ollama_config = None
 

@@ -96,6 +96,19 @@ def _build_ollama(model: str, **overrides: Any):
     )
 
 
+def _apply_reasoning_effort(overrides: Dict[str, Any]) -> None:
+    """Move ``reasoning_effort`` into ``extra_body`` so ChatOpenAI forwards it
+    in the request body. Works for OpenAI o-series/gpt-5 and any OpenAI-compat
+    endpoint that accepts the param (Gemini OpenAI-compat maps it to
+    thinking_budget)."""
+    effort = overrides.pop("reasoning_effort", None)
+    if not effort:
+        return
+    extra_body = dict(overrides.pop("extra_body", None) or {})
+    extra_body["reasoning_effort"] = effort
+    overrides["extra_body"] = extra_body
+
+
 def _build_openai(model: str, **overrides: Any):
     from langchain_openai import ChatOpenAI
 
@@ -105,6 +118,7 @@ def _build_openai(model: str, **overrides: Any):
             "OPENAI_API_KEY is not set; required for the 'openai' provider"
         )
     base_url = overrides.pop("base_url", None) or os.environ.get("OPENAI_BASE_URL")
+    _apply_reasoning_effort(overrides)
     return ChatOpenAI(
         model=model,
         api_key=api_key,
@@ -121,6 +135,10 @@ def _build_anthropic(model: str, **overrides: Any):
         raise BackendError(
             "ANTHROPIC_API_KEY is not set; required for the 'anthropic' provider"
         )
+    # Anthropic uses `thinking={"type":"enabled","budget_tokens":N}` not
+    # `reasoning_effort` — drop the OpenAI-style param silently. Wire a real
+    # thinking config here when the bench needs it.
+    overrides.pop("reasoning_effort", None)
     return ChatAnthropic(
         model=model,
         api_key=api_key,
@@ -136,6 +154,7 @@ def _build_openrouter(model: str, **overrides: Any):
         raise BackendError(
             "OPENROUTER_API_KEY is not set; required for the 'openrouter' provider"
         )
+    _apply_reasoning_effort(overrides)
     return ChatOpenAI(
         model=model,
         api_key=api_key,
@@ -153,6 +172,7 @@ def _build_custom(model: str, **overrides: Any):
             "LLM_CUSTOM_BASE_URL is not set; required for the 'custom' provider"
         )
     api_key = overrides.pop("api_key", None) or os.environ.get("LLM_CUSTOM_API_KEY", "EMPTY")
+    _apply_reasoning_effort(overrides)
     return ChatOpenAI(
         model=model,
         api_key=api_key,
