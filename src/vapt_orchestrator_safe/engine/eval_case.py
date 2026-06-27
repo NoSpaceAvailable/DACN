@@ -174,8 +174,14 @@ def run_eval_case(
         "loop_detected": loop_detected,
         "watchdog_trips": len(summary.get("watchdog_trips", [])),
         "wall_s": round(wall_s, 2),
+        # `budget_tokens` giữ nguyên ý nghĩa cũ cho rule-based backend
+        # (simulated heuristic). Cho LLM thật, đọc thêm llm_tokens_* ở dưới
+        # — đây là token thực do provider báo (LangChain usage_metadata).
         "budget_tokens": summary.get("budget", {}).get("simulated_tokens", 0),
         "budget_cost": summary.get("budget", {}).get("simulated_cost", 0),
+        "llm_tokens_in": summary.get("budget", {}).get("llm_tokens_in", 0),
+        "llm_tokens_out": summary.get("budget", {}).get("llm_tokens_out", 0),
+        "llm_calls": summary.get("budget", {}).get("llm_calls", 0),
         "output_dir": out_dir,
     }
     if error:

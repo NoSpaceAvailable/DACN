@@ -39,7 +39,7 @@ CONFIG_COLORS = ["#cccccc", "#4daf4a", "#377eb8", "#ff7f00", "#e41a1c"]
 # Giá API tham khảo (USD per 1M token, input/output). Dùng cho phép tính cost
 # khi `budget_cost` trong row = 0 (provider không tự log). Cập nhật khi giá đổi.
 PROVIDER_PRICING_USD_PER_MTOK = {
-    # input, output
+    # input, output (USD per 1M token). Cập nhật khi giá đổi.
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-pro": (1.25, 10.00),
     "gpt-5-mini": (0.25, 2.00),
@@ -47,6 +47,11 @@ PROVIDER_PRICING_USD_PER_MTOK = {
     "mistral-medium-latest": (2.70, 8.10),
     "mistral-small-latest": (0.20, 0.60),
     "gemma-4-31b-it": (0.0, 0.0),  # free via Gemini OpenAI-compat
+    # OpenRouter slug (giá Anthropic/OpenAI gốc + ~5% markup OR)
+    "anthropic/claude-sonnet-4.5": (3.00, 15.00),
+    "anthropic/claude-sonnet-4-5": (3.00, 15.00),
+    "openai/gpt-5-mini": (0.25, 2.00),
+    "openai/gpt-5": (1.25, 10.00),
 }
 
 
@@ -70,7 +75,11 @@ def load_results(paths: list[Path]) -> pd.DataFrame:
     # Đảm bảo các cột số tồn tại để các phép pivot không crash khi CSV cũ.
     for col in ["budget_tokens", "budget_cost", "tool_calls", "wall_s", "steps",
                 "loop_detected", "watchdog_trips", "validated_findings",
-                "llm_findings"]:
+                "llm_findings",
+                # Cột mới: token thật từ LLM provider (LangChain usage_metadata).
+                # CSV bench cũ không có → fillna(0), tính cost sẽ rơi vào nhánh
+                # estimate dựa trên budget_tokens (heuristic) làm fallback.
+                "llm_tokens_in", "llm_tokens_out", "llm_calls"]:
         if col not in df.columns:
             df[col] = 0
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -107,13 +116,25 @@ def _classify_failure(row: pd.Series) -> str:
 
 
 def _enrich_cost(df: pd.DataFrame) -> pd.DataFrame:
-    """Tính cost USD từ budget_tokens nếu budget_cost = 0."""
+    """Tính cost USD ưu tiên dùng `llm_tokens_in/out` (token thật do LLM
+    provider báo về qua usage_metadata). Khi cột này = 0 (CSV cũ chưa có),
+    fall back sang `budget_tokens` (heuristic) và giả định 70/30 input/output."""
     df = df.copy()
     df["est_cost_usd"] = df["budget_cost"].astype(float)
-    needs_estimate = df["est_cost_usd"] <= 0
+
+    has_real_usage = (df["llm_tokens_in"] + df["llm_tokens_out"]) > 0
+
+    # Nhánh 1: có token thật → tính chính xác theo pricing input/output.
+    for model, (p_in, p_out) in PROVIDER_PRICING_USD_PER_MTOK.items():
+        mask = has_real_usage & (df["model"] == model)
+        if mask.any():
+            tin = df.loc[mask, "llm_tokens_in"].astype(float)
+            tout = df.loc[mask, "llm_tokens_out"].astype(float)
+            df.loc[mask, "est_cost_usd"] = (tin * p_in + tout * p_out) / 1_000_000
+
+    # Nhánh 2: không có token thật và est_cost_usd còn 0 → fallback heuristic.
+    needs_estimate = (~has_real_usage) & (df["est_cost_usd"] <= 0)
     if needs_estimate.any() and "budget_tokens" in df.columns:
-        # Giả định 70% input / 30% output (tỉ lệ điển hình cho tool-use agent
-        # với prompt dài + tool result dài + LLM output ngắn).
         for model, (p_in, p_out) in PROVIDER_PRICING_USD_PER_MTOK.items():
             mask = needs_estimate & (df["model"] == model)
             if mask.any():
@@ -125,17 +146,24 @@ def _enrich_cost(df: pd.DataFrame) -> pd.DataFrame:
 # ── Tables ────────────────────────────────────────────────────────────────
 def print_tables(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
     print("\n" + "=" * 70)
-    print("BẢNG 1 — Tỷ lệ phát hiện theo mô hình")
+    print("BẢNG 1 — Tỷ lệ phát hiện theo mô hình (có token + cost USD)")
     print("=" * 70)
-    t1 = df.groupby("model").agg(
+    df_cost1 = _enrich_cost(df)
+    t1 = df_cost1.groupby("model").agg(
         runs=("detected", "count"),
         detected=("detected", "sum"),
         detection_rate=("detected", "mean"),
         avg_steps=("steps", "mean"),
         avg_tool_calls=("tool_calls", "mean"),
         avg_wall_s=("wall_s", "mean"),
-    ).round(3)
+        total_tok_in=("llm_tokens_in", "sum"),
+        total_tok_out=("llm_tokens_out", "sum"),
+        avg_tok_per_run=("llm_tokens_in", lambda s: (s + df_cost1.loc[s.index, "llm_tokens_out"]).mean()),
+        total_cost_usd=("est_cost_usd", "sum"),
+        avg_cost_usd=("est_cost_usd", "mean"),
+    ).round(4)
     print(t1.to_string())
+    t1.to_csv(out_dir / "per_model_summary.csv")
 
     print("\n" + "=" * 70)
     print("BẢNG 2 — Tỷ lệ phát hiện theo Mô hình × Cấu hình (ablation)")
@@ -284,7 +312,7 @@ def plot_charts(df: pd.DataFrame, out_dir: Path) -> None:
     # ── Chart 4: wall-time distribution (boxplot per config) ───
     fig, ax = plt.subplots(figsize=(8, 5))
     data = [df[df["config"] == c]["wall_s"].dropna().values for c in cfgs]
-    bp = ax.boxplot(data, labels=cfgs, patch_artist=True, showfliers=False)
+    bp = ax.boxplot(data, tick_labels=cfgs, patch_artist=True, showfliers=False)
     for patch, color in zip(bp["boxes"], [CONFIG_COLORS[CONFIG_ORDER.index(c)] for c in cfgs]):
         patch.set_facecolor(color)
     ax.set_title("Phân bố thời gian mỗi phiên theo cấu hình")

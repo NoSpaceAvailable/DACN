@@ -131,6 +131,7 @@ class Dispatcher:
         history_compaction: bool = True,
         keep_recent_tool_msgs: int = 3,
         compact_over_chars: int = 800,
+        budget: Optional[Any] = None,
     ):
         self._raw_chat_model = chat_model
         self._tools_list = list(tools)
@@ -154,6 +155,8 @@ class Dispatcher:
         self.history_compaction = history_compaction
         self.keep_recent_tool_msgs = keep_recent_tool_msgs
         self.compact_over_chars = compact_over_chars
+        # Optional BudgetTracker — receives real LLM token usage after each call.
+        self.budget = budget
 
         # Mechanism-research nudge: count consecutive exploit-class tool calls
         # without any mechanism-research-class call in between. After
@@ -639,7 +642,9 @@ class Dispatcher:
         rl_attempts = 0
         while True:
             try:
-                return self._call_llm_inner(messages)
+                response, intervened = self._call_llm_inner(messages)
+                self._record_token_usage(response)
+                return response, intervened
             except Exception as exc:
                 if not self._text_tool_fallback:
                     from vapt_orchestrator_safe.llm.text_tool_wrapper import (
@@ -696,6 +701,25 @@ class Dispatcher:
                     rl_attempts += 1
                     continue
                 raise
+
+    def _record_token_usage(self, response: AIMessage) -> None:
+        """Trích xuất usage_metadata (LangChain chuẩn hoá cho OpenAI/Anthropic/
+        Gemini OpenAI-compat) và dồn vào budget tracker. Im lặng nếu provider
+        không trả về usage (Ollama rule-based, một số custom endpoint)."""
+        usage = getattr(response, "usage_metadata", None)
+        if not usage:
+            return
+        tokens_in = usage.get("input_tokens", 0) if isinstance(usage, dict) else 0
+        tokens_out = usage.get("output_tokens", 0) if isinstance(usage, dict) else 0
+        if self.budget is not None and hasattr(self.budget, "record_llm_usage"):
+            self.budget.record_llm_usage(tokens_in, tokens_out)
+        # Cũng log vào blackboard event để chạy lại analysis ngay cả khi
+        # không có budget — `outputs/runs_*/memory.json` chứa raw usage events.
+        self.blackboard.log_event(
+            "dispatcher", "llm_usage",
+            {"tokens_in": int(tokens_in or 0),
+             "tokens_out": int(tokens_out or 0)},
+        )
 
     def _call_llm_inner(self, messages: List[BaseMessage]) -> Tuple[AIMessage, bool]:
         if not self.watchdogs or not hasattr(self.chat_model, "stream"):

@@ -400,6 +400,7 @@ class DispatcherRunner:
                 and self.enable_source_analysis
                 and bool(intake.get("source_files"))
             ),
+            budget=budget,
         )
         if goal:
             effective_goal = goal

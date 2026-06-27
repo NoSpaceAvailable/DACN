@@ -423,11 +423,34 @@ def main() -> int:
         if "detected" not in df.columns:
             df["detected"] = df["status"].isin(["solved", "validated", "supported"]).astype(int)
         df["detected"] = df["detected"].fillna(0).astype(int)
+        # Đảm bảo cột token mới luôn có (CSV cũ thiếu) để aggregate không crash.
+        for col in ("llm_tokens_in", "llm_tokens_out", "llm_calls", "wall_s"):
+            if col not in df.columns:
+                df[col] = 0
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
         df.to_csv(csv_path, index=False)
+
+        total_tok_in = int(df["llm_tokens_in"].sum())
+        total_tok_out = int(df["llm_tokens_out"].sum())
+        total_tok = total_tok_in + total_tok_out
+        total_calls = int(df["llm_calls"].sum())
+        total_wall_s = float(df["wall_s"].sum())
+
         summary = {
             "by_config": df.groupby("config")["detected"].mean().round(3).to_dict(),
             "by_fixture": df.groupby("fixture")["detected"].mean().round(3).to_dict(),
             "overall_detection_rate": round(float(df["detected"].mean()), 3),
+            # Tổng kết token + thời gian cho toàn bộ phiên bench, dùng để so
+            # cost giữa các model sau cùng (gemini-flash vs claude vs gpt-5-mini).
+            "total_llm_tokens_in": total_tok_in,
+            "total_llm_tokens_out": total_tok_out,
+            "total_llm_tokens": total_tok,
+            "total_llm_calls": total_calls,
+            "total_wall_s": round(total_wall_s, 1),
+            "avg_tokens_per_run": round(total_tok / max(1, len(df)), 1),
+            "by_model_tokens": df.groupby("model")[
+                ["llm_tokens_in", "llm_tokens_out"]
+            ].sum().to_dict("index"),
         }
     except ImportError:
         pass
@@ -449,6 +472,13 @@ def main() -> int:
     print(f"  JSON:  {json_path}")
     if summary:
         print(f"  Overall detection rate: {summary['overall_detection_rate']}")
+        print(f"  Total LLM tokens:  in={summary['total_llm_tokens_in']:,}  "
+              f"out={summary['total_llm_tokens_out']:,}  "
+              f"total={summary['total_llm_tokens']:,} "
+              f"({summary['total_llm_calls']} calls, "
+              f"{summary['avg_tokens_per_run']:.0f} tok/run avg)")
+        print(f"  Total wall time:   {summary['total_wall_s']:.0f}s "
+              f"({summary['total_wall_s']/60:.1f}m)")
     return 0
 
 
