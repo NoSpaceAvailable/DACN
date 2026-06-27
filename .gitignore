@@ -18,3 +18,4 @@ data/corpus/*.done
 NYU_CTF_Bench-main/
 latex/
 .ssh/
+xbow_benchmarks/
