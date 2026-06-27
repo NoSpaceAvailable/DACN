@@ -294,6 +294,14 @@ def main() -> int:
     if not args.provider or not args.model:
         parser.error("--provider and --model are required (or use --list-providers).")
 
+    # Cho phép user pass "baseline,C1_only,..." (1 string với dấu phẩy) hoặc
+    # "baseline C1_only ..." (space-separated như argparse mặc định).
+    args.configs = [c for raw in args.configs for c in raw.split(",") if c.strip()]
+    args.fixtures = [f for raw in args.fixtures for f in raw.split(",") if f.strip()]
+    unknown = [c for c in args.configs if c not in ABLATION_CONFIGS]
+    if unknown:
+        parser.error(f"Unknown configs: {unknown}. Expected any of {sorted(ABLATION_CONFIGS)}.")
+
     entry = _resolve_provider(args.provider)
     api_key = _find_api_key(args.api_key, entry)
     _configure_env(args.provider, entry, api_key, args.base_url)
