@@ -661,11 +661,14 @@ class Dispatcher:
                     wait = self.rate_limit_backoff_s * (2 ** rl_attempts)
                     # Adaptive throttling: each rate-limit hit ratchets up the
                     # per-call delay floor so we don't immediately burst again
-                    # on the next step. Capped at 10s — free-tier mistral is
-                    # 1 RPS, so a 3-second floor is enough to never hit it
-                    # again, but we step gradually to avoid over-correcting.
+                    # on the next step. Cap raised to 30s — OpenAI / Anthropic
+                    # tier-1 quotas are TPM-based (200k tok/min on a fresh
+                    # account); a single dispatcher invocation with full source +
+                    # 15 tool schemas can hit 30-50k tokens, so 3-4 calls in
+                    # quick succession blow the minute window. 30s cap means
+                    # we settle to ≤2 calls/min on persistent throttling.
                     old_delay = self.call_delay_s
-                    self.call_delay_s = min(10.0, max(self.call_delay_s + 1.5, 3.0))
+                    self.call_delay_s = min(30.0, max(self.call_delay_s + 1.5, 3.0))
                     self.blackboard.log_event(
                         "dispatcher", "rate_limit_backoff",
                         {"attempt": rl_attempts + 1, "wait_s": wait,

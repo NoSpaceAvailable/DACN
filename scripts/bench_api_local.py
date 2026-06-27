@@ -250,11 +250,14 @@ def main() -> int:
     parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--sleep-between", type=float, default=1.5,
                         help="Seconds to sleep between runs (avoid rate limits).")
-    parser.add_argument("--call-delay", type=float, default=2.0,
+    parser.add_argument("--call-delay", type=float, default=None,
                         help="Seconds to pace EACH dispatcher LLM call within a run. "
-                             "Default 2.0 fits Mistral free tier (1 RPS). Set 6-7 for "
-                             "10-RPM tiers like Gemini, or 0 for paid/unlimited tiers. "
-                             "Auto-bumps after each rate-limit hit (adaptive throttling).")
+                             "Default depends on provider — 2.0 for mistral (1 RPS free "
+                             "tier), 10.0 for openai/anthropic (TPM-bound reasoning models "
+                             "where a single call can be 30-50k tokens), 6.0 for "
+                             "openrouter/gemini/groq (10-RPM tiers), 0 for paid/unlimited. "
+                             "Auto-bumps up to 30s after each rate-limit hit "
+                             "(adaptive throttling).")
     parser.add_argument("--require-source-read", action="store_true",
                         help="Force the model to read the source before finishing "
                              "(completion guard for genuine source analysis).")
@@ -290,6 +293,20 @@ def main() -> int:
 
     # backend_factory consumes `provider:model` (e.g. custom:mistral-large-latest).
     eval_case_provider = entry.backend_kind
+
+    # Provider-aware default for per-call pacing. OpenAI / Anthropic tier-1 are
+    # TPM-bound and one dispatcher call can be 30-50k tokens — 2s pacing burns
+    # the quota in a few seconds. Honour the user's --call-delay if they passed
+    # it explicitly.
+    if args.call_delay is None:
+        kind = entry.backend_kind
+        if kind in ("openai", "anthropic"):
+            args.call_delay = 10.0
+        elif args.provider in ("openrouter", "gemini", "groq"):
+            args.call_delay = 6.0
+        else:
+            args.call_delay = 2.0
+        print(f"call_delay (auto, provider={args.provider}): {args.call_delay}s")
 
     outputs_dir = Path(args.outputs_dir)
     outputs_dir.mkdir(parents=True, exist_ok=True)
