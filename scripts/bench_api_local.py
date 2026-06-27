@@ -407,11 +407,27 @@ def main() -> int:
                 )
             except Exception as exc:
                 wall_s = time.perf_counter() - t0
+                exc_name = type(exc).__name__
+                # Transient errors (rate-limit, auth, network) KHÔNG persist:
+                # nếu user fix key/đổi tier rồi rerun, các fixture này được retry.
+                # Persistent errors (BadRequestError do prompt sai, etc.) thì
+                # giữ lại để khỏi loop vô tận.
+                transient = exc_name in {
+                    "AuthenticationError", "RateLimitError",
+                    "APITimeoutError", "APIConnectionError",
+                    "PermissionDeniedError", "InternalServerError",
+                    "ServiceUnavailableError",
+                } or "401" in str(exc) or "429" in str(exc)
+                if transient:
+                    print(f"  [-] TRANSIENT {exc_name}: {str(exc)[:200]}  (không ghi jsonl, sẽ retry lần sau)")
+                    if args.sleep_between > 0 and idx < total:
+                        time.sleep(args.sleep_between)
+                    continue
                 row = {
                     "model": args.model,
                     "fixture": fixture.name,
                     "config": cfg,
-                    "status": f"error:{type(exc).__name__}",
+                    "status": f"error:{exc_name}",
                     "stop_reason": "?",
                     "steps": 0,
                     "tool_calls": 0,
