@@ -179,6 +179,14 @@ class Dispatcher:
         self.directive_nudge_max = 2
         self._current_step = 0
 
+        # Late-step commitment nudge: past N% of max_steps with no
+        # record_finding yet, inject a "commit your best hypothesis NOW"
+        # correction. Two thresholds (0.6 and 0.8) so a single late-burst
+        # of research doesn't trigger immediately, but agent eventually
+        # gets shoved off the research treadmill.
+        self.commit_nudge_thresholds: Tuple[float, ...] = (0.6, 0.8)
+        self._commit_nudge_next_idx = 0
+
         for tool in tools:
             if hasattr(tool, "bind_blackboard"):
                 tool.bind_blackboard(blackboard)
@@ -282,6 +290,38 @@ class Dispatcher:
             "dispatcher", "directive_nudge",
             {"tokens": [t for t, _ in stale[:3]],
              "fired": self._directive_nudges_fired},
+        )
+
+    def _maybe_late_commit_nudge(
+        self, step: int, invocations: Sequence[Dict[str, Any]],
+    ) -> None:
+        """If the model is past `commit_nudge_thresholds[i]` of `max_steps`
+        and has never called `record_finding`, queue a "commit your best
+        hypothesis NOW" correction. v6 trace showed mistral-medium can spend
+        50 steps researching without ever logging a finding — this is the
+        backstop that forces commitment."""
+        if self._commit_nudge_next_idx >= len(self.commit_nudge_thresholds):
+            return
+        threshold = self.commit_nudge_thresholds[self._commit_nudge_next_idx]
+        if step / max(1, self.max_steps) < threshold:
+            return
+        if any(inv.get("name") == "record_finding" for inv in invocations):
+            return  # already committed at least once
+        self._commit_nudge_next_idx += 1
+        self._pending_correction = (
+            f"[dispatcher_guard] step {step}/{self.max_steps} "
+            f"({int(threshold * 100)}%+) and still no `record_finding` call. "
+            f"You have done substantial research — STOP researching, pick the "
+            f"single best-supported hypothesis you have right now, and call "
+            f"`record_finding(vuln_class=..., location=..., description=..., "
+            f"severity=..., suggested_poc=...)`. An imperfect finding beats no "
+            f"finding (rule 9). After committing you may continue probing or "
+            f"call `invoke_report` to finish."
+        )
+        self.blackboard.log_event(
+            "dispatcher", "commit_nudge",
+            {"step": step, "threshold": threshold,
+             "fired": self._commit_nudge_next_idx},
         )
 
     def _update_research_streak(self, invocations: Sequence[Dict[str, Any]]) -> None:
@@ -470,6 +510,7 @@ class Dispatcher:
             invocations.extend(step_invocations)
             self._update_research_streak(step_invocations)
             self._update_directive_tracking(response, step_invocations)
+            self._maybe_late_commit_nudge(step, invocations)
             if self.hook and not self.hook.after_step(step, response, step_invocations):
                 return DispatcherResult(
                     final_text=None,

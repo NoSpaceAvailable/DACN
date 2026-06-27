@@ -26,9 +26,18 @@ Examples (PowerShell)::
     python scripts/bench_api_local.py `
         --provider gemini --model gemini-2.5-flash --api-key $env:GEMINI_API_KEY
 
-    # Anthropic (requires `pip install langchain-anthropic` once)
+    # Anthropic — claude-sonnet (advisor-target reference model for DACN ≥80% goal).
+    # Requires `pip install langchain-anthropic` once.
     python scripts/bench_api_local.py `
-        --provider anthropic --model claude-sonnet-4-5 --api-key $env:ANTHROPIC_API_KEY
+        --provider anthropic --model claude-sonnet-4-5 --api-key $env:ANTHROPIC_API_KEY `
+        --fixtures live_gatekeeping --configs all --live --max-steps 40
+
+    # OpenAI — gpt-5-mini (the other advisor-target reference model). Use this
+    # alongside the claude-sonnet run to isolate "harness limit vs model limit"
+    # on a hard logic-bug fixture (e.g. live_gatekeeping).
+    python scripts/bench_api_local.py `
+        --provider openai --model gpt-5-mini --api-key $env:OPENAI_API_KEY `
+        --fixtures live_gatekeeping --configs all --live --max-steps 40
 
     # Groq free tier (fast Llama 3.3 70B)
     python scripts/bench_api_local.py `
