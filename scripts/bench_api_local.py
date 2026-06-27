@@ -345,6 +345,30 @@ def main() -> int:
     print(f"Model:    {args.model}")
     print(f"Matrix:   {len(fixture_dirs)} fixtures × {len(args.configs)} configs = {total} runs\n")
 
+    # ── Preflight: bắn 1 chat tối thiểu để xác nhận credential trước khi vô
+    # vòng N×M. Tránh kịch bản 100 fixture đều 401 vì key sai/empty.
+    if entry.backend_kind != "ollama":
+        key_env = entry.api_key_env
+        key_val = os.environ.get(key_env, "")
+        masked = f"{key_val[:6]}…{key_val[-4:]} (len={len(key_val)})" if key_val else "<empty>"
+        print(f"Preflight: testing {key_env}={masked} ...")
+        try:
+            from vapt_orchestrator_safe.llm.backend_factory import build_chat_model
+            from langchain_core.messages import HumanMessage
+            test_model = build_chat_model(
+                f"{entry.backend_kind}:{args.model}",
+                temperature=0.0, timeout=30, max_retries=0,
+            )
+            resp = test_model.invoke([HumanMessage(content="ping")])
+            print(f"Preflight OK: model replied ({len(getattr(resp, 'content', '') or '')} chars)\n")
+        except Exception as exc:
+            raise SystemExit(
+                f"Preflight FAILED: {type(exc).__name__}: {exc}\n"
+                f"  → kiểm tra {key_env} có trỏ đúng key của provider {args.provider} không "
+                f"(value hiện tại: {masked}). Nếu copy từ shell khác, đảm bảo không có "
+                f"khoảng trắng/dấu ngoặc và đúng provider (key OpenAI ≠ key OpenRouter)."
+            )
+
     for fixture in fixture_dirs:
         for cfg in args.configs:
             idx += 1
