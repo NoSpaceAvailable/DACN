@@ -52,6 +52,14 @@ PROVIDER_PRICING_USD_PER_MTOK = {
     "anthropic/claude-sonnet-4-5": (3.00, 15.00),
     "openai/gpt-5-mini": (0.25, 2.00),
     "openai/gpt-5": (1.25, 10.00),
+    # Together.ai (open-source, cho học thuật)
+    "deepseek-ai/DeepSeek-V3.1": (0.60, 1.70),
+    "deepseek-ai/DeepSeek-R1-0528": (3.00, 7.00),
+    "openai/gpt-oss-120b": (0.15, 0.60),
+    "openai/gpt-oss-20b": (0.05, 0.20),
+    "Qwen/Qwen3-235B-A22B-Instruct-2507-tput": (0.20, 0.60),
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo": (1.04, 1.04),
+    "moonshotai/Kimi-K2.6": (1.20, 4.50),
 }
 
 
