@@ -50,7 +50,12 @@ PROMPT_TEMPLATE = """You are a CTF web-challenge solver. Analyze the source code
 Challenge: {title}
 Description: {description}
 
-Read files as needed (the source root is the current directory). Then:
+Hard constraints:
+- Use AT MOST {max_steps} tool calls total. Plan accordingly — read source first, reason, then commit.
+- ONLY read files inside the current working directory. Do NOT read any path containing 'data/fixtures', 'ground_truth', 'manifest.json', or 'transcripts'. Do NOT explore parent directories.
+- No network access.
+
+Task:
 1. Identify the vulnerability class (e.g. SQLi, LFI, SSRF, XSS, IDOR, RCE, AuthBypass, XXE, Deserialization, CSRF, Open Redirect).
 2. Explain bug location + root cause briefly.
 3. Give a concrete exploit payload (URL / request body / parameter).
@@ -126,20 +131,41 @@ def parse_stream(stdout: str) -> dict:
             "last_message": last_msg}
 
 
-def run_one(model: str, fixture: Path, timeout_s: int, workdir_root: Path) -> dict:
+# Pattern để phát hiện Codex (hoặc model) lén đọc path ngoài workdir tạm.
+# Nếu hit → log warning, đánh dấu row leak=1 để sau loại bỏ khỏi bench.
+LEAK_PATTERNS = (
+    re.compile(r"data[\\/]fixtures[\\/]", re.I),
+    re.compile(r"ground_truth", re.I),
+    re.compile(r"expected_vulnerability", re.I),
+    re.compile(r"expected_payload_pattern", re.I),
+    re.compile(r"\bmanifest\.json\b", re.I),
+    re.compile(r"transcripts[\\/]", re.I),
+)
+
+
+def scan_leak(text: str) -> str:
+    for pat in LEAK_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m.group(0)
+    return ""
+
+
+def run_one(model: str, fixture: Path, timeout_s: int, max_steps: int,
+            workdir_root: Path) -> dict:
     manifest = json.loads((fixture / "manifest.json").read_text(encoding="utf-8"))
     gt = json.loads((fixture / "ground_truth.json").read_text(encoding="utf-8"))
     expected = gt.get("expected_vulnerability", "")
     src_root = fixture / manifest.get("source_root", "source")
 
-    # Copy source ra workdir tạm — Codex chạy với --cd trỏ vào đây, đảm bảo
-    # nó không thấy ground_truth.json hay manifest (hint leakage).
+    # Workdir tạm — KHÔNG copy ground_truth/manifest/transcripts, chỉ source.
     workdir = workdir_root / f"{fixture.name}-{os.getpid()}-{int(time.monotonic_ns())}"
     shutil.copytree(src_root, workdir)
 
     prompt = PROMPT_TEMPLATE.format(
         title=manifest.get("title", fixture.name),
         description=manifest.get("description", ""),
+        max_steps=max_steps,
     )
     last_msg_file = workdir_root / f"{fixture.name}.last.txt"
     cmd = [
@@ -152,33 +178,96 @@ def run_one(model: str, fixture: Path, timeout_s: int, workdir_root: Path) -> di
         "--output-last-message", str(last_msg_file),
         prompt,
     ]
+
+    # Popen + streaming: count tool_calls + agent_messages incrementally, kill
+    # khi vượt max_steps. Đây là cách duy nhất ép cap step vì Codex CLI không
+    # có flag --max-steps.
     t0 = time.perf_counter()
+    stdout_chunks: list[str] = []
+    steps = tool_calls = tok_in = tok_out = 0
+    last_msg_stream = ""
+    killed_reason = ""
+    timed_out = False
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
     try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout_s,
-            encoding="utf-8", errors="replace",
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        rc = proc.returncode
-        timed_out = False
-    except subprocess.TimeoutExpired as e:
-        stdout = (e.stdout or "") if isinstance(e.stdout, str) else (e.stdout.decode("utf-8", "replace") if e.stdout else "")
-        stderr = "timeout"
-        rc = -1
-        timed_out = True
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            stdout_chunks.append(line)
+            line_strip = line.strip()
+            if not line_strip.startswith("{"):
+                continue
+            try:
+                ev = json.loads(line_strip)
+            except json.JSONDecodeError:
+                continue
+            msg = ev.get("msg") if isinstance(ev.get("msg"), dict) else ev
+            t = msg.get("type", "")
+            if t == "agent_message":
+                steps += 1
+                last_msg_stream = msg.get("message") or msg.get("text") or last_msg_stream
+            elif t == "agent_reasoning":
+                steps += 1
+            elif t in ("exec_command_begin", "patch_apply_begin", "function_call",
+                       "mcp_tool_call_begin", "web_search_begin"):
+                tool_calls += 1
+            elif t == "token_count":
+                info = msg.get("info") or msg
+                usage = info.get("total_token_usage") or info.get("last_token_usage") or info
+                if isinstance(usage, dict):
+                    tok_in = max(tok_in, int(usage.get("input_tokens", 0) or 0))
+                    tok_out = max(tok_out, int(usage.get("output_tokens", 0) or 0))
+            # Hard cap: kill khi tool_calls hoặc steps vượt max_steps.
+            if tool_calls >= max_steps or steps >= max_steps * 2:
+                killed_reason = f"step_cap({tool_calls}tc/{steps}st)"
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                break
+            # Wall timeout check (per-fixture).
+            if time.perf_counter() - t0 > timeout_s:
+                killed_reason = "timeout"
+                timed_out = True
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                break
+        try:
+            rc = proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            rc = -1
+        stderr = (proc.stderr.read() if proc.stderr else "") or ""
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+    stdout = "".join(stdout_chunks)
     wall_s = time.perf_counter() - t0
 
-    parsed = parse_stream(stdout)
     last_msg_disk = ""
     if last_msg_file.exists():
         last_msg_disk = last_msg_file.read_text(encoding="utf-8", errors="replace")
         last_msg_file.unlink(missing_ok=True)
-    last_msg = parsed["last_message"] or last_msg_disk
+    last_msg = last_msg_stream or last_msg_disk
     detected = detect_vuln(stdout, last_msg, expected)
+    leak_hit = scan_leak(stdout + "\n" + last_msg)
 
-    status = "timeout" if timed_out else ("ok" if rc == 0 else f"error:exit{rc}")
-    error = "" if rc == 0 and not timed_out else stderr[:1000]
+    if killed_reason:
+        status = killed_reason if killed_reason.startswith("step_cap") else "timeout"
+    elif rc == 0:
+        status = "ok"
+    else:
+        status = f"error:exit{rc}"
+    error = ""
+    if status != "ok" and not killed_reason.startswith("step_cap"):
+        error = stderr[:1000]
 
     shutil.rmtree(workdir, ignore_errors=True)
 
@@ -187,22 +276,23 @@ def run_one(model: str, fixture: Path, timeout_s: int, workdir_root: Path) -> di
         "fixture": fixture.name,
         "config": "codex_default",
         "status": status,
-        "stop_reason": "?",
-        "steps": parsed["steps"],
-        "tool_calls": parsed["tool_calls"],
+        "stop_reason": killed_reason or ("ok" if rc == 0 else "?"),
+        "steps": steps,
+        "tool_calls": tool_calls,
         "validated_findings": 0,
         "llm_findings": int(bool(last_msg)),
         "solved": False,
         "expected_vuln": expected,
         "detected": detected,
         "loop_detected": 0,
-        "watchdog_trips": 0,
+        "watchdog_trips": 1 if killed_reason.startswith("step_cap") else 0,
         "wall_s": round(wall_s, 2),
-        "budget_tokens": parsed["llm_tokens_in"] + parsed["llm_tokens_out"],
+        "budget_tokens": tok_in + tok_out,
         "budget_cost": 0,
-        "llm_tokens_in": parsed["llm_tokens_in"],
-        "llm_tokens_out": parsed["llm_tokens_out"],
-        "llm_calls": parsed["steps"],
+        "llm_tokens_in": tok_in,
+        "llm_tokens_out": tok_out,
+        "llm_calls": steps,
+        "leak_hit": leak_hit,
         "error": error,
     }
 
@@ -212,7 +302,7 @@ def _safe_tag(s: str) -> str:
 
 
 def _demo() -> None:
-    """ponytail self-check: parser + detector phải chạy đúng trên stream giả."""
+    """ponytail self-check: parser + detector + leak-scanner + prompt-format."""
     sample = "\n".join([
         '{"id":"1","msg":{"type":"agent_reasoning","text":"thinking..."}}',
         '{"id":"2","msg":{"type":"exec_command_begin","command":["ls"]}}',
@@ -227,7 +317,14 @@ def _demo() -> None:
     assert "FINAL" in p["last_message"], p
     assert detect_vuln(sample, p["last_message"], "LFI") == 1
     assert detect_vuln("nothing here", "", "LFI") == 0
-    print("demo OK: parse_stream + detect_vuln pass.")
+    # Leak scanner
+    assert scan_leak("normal log") == ""
+    assert "ground_truth" in scan_leak("cat data/fixtures/web-001/ground_truth.json").lower() \
+        or "data/fixtures" in scan_leak("cat data/fixtures/web-001/ground_truth.json").lower()
+    # Prompt template phải accept {max_steps} (không raise KeyError)
+    rendered = PROMPT_TEMPLATE.format(title="x", description="y", max_steps=40)
+    assert "AT MOST 40" in rendered
+    print("demo OK: parse_stream + detect_vuln + scan_leak + prompt pass.")
 
 
 def main() -> int:
@@ -238,7 +335,10 @@ def main() -> int:
     parser.add_argument("--fixtures", nargs="*", default=DEFAULT_FIXTURES,
                         help="Fixture names under data/fixtures/")
     parser.add_argument("--timeout-s", type=int, default=600,
-                        help="Per-fixture timeout (default 600s).")
+                        help="Per-fixture wall timeout (default 600s).")
+    parser.add_argument("--max-steps", type=int, default=40,
+                        help="Hard cap on tool_calls per fixture (default 40, "
+                             "matching bench_api_local.py).")
     parser.add_argument("--sleep-between", type=float, default=2.0)
     parser.add_argument("--outputs-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--demo", action="store_true", help="Self-check parser + detector then exit.")
@@ -297,7 +397,7 @@ def main() -> int:
         if fd.name in completed:
             print("  SKIP: already ok in jsonl")
             continue
-        row = run_one(args.model, fd, args.timeout_s, workdir_root)
+        row = run_one(args.model, fd, args.timeout_s, args.max_steps, workdir_root)
         with open(jsonl_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         flag = "D" if row.get("detected") else "-"
@@ -306,6 +406,8 @@ def main() -> int:
         print(f"  [{flag}] {row['status']}  steps={row['steps']}  tools={row['tool_calls']}  "
               f"tok={row['llm_tokens_in']}+{row['llm_tokens_out']}  wall={row['wall_s']:.1f}s")
         print(f"  Elapsed {elapsed/60:.1f}m | ETA {eta/60:.1f}m")
+        if row.get("leak_hit"):
+            print(f"  ⚠️  LEAK pattern hit: {row['leak_hit']!r} — Codex có thể đã đọc path ngoài workdir.")
         if row.get("error"):
             print(f"  ERROR: {row['error'][:300]}")
         if args.sleep_between > 0 and idx < total:
