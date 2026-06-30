@@ -1,0 +1,4 @@
+failure_class,count,pct
+detected (oracle gap),400,62.5
+finding_wrong_class,228,35.6
+other,12,1.9

@@ -1,0 +1,10 @@
+model,C1_only,C2_only,C3_only,all,baseline,claude_default,codex_default,Overall
+Qwen/Qwen3-235B-A22B-Instruct-2507-tput,0.55,0.5,0.55,0.35,0.55,,,0.5
+claude-sonnet-4-5@claude-cli,,,,,,0.65,,0.65
+deepseek-v4-flash,0.5,0.6,0.7,0.7,0.65,,,0.63
+gemini-3.1-flash-lite,0.6,0.7,0.65,0.4,0.4,,,0.55
+gemma-4-31b-it,0.75,0.75,0.75,0.75,0.75,,,0.75
+gpt-5.4-mini@codex-cli,,,,,,,0.75,0.75
+mistral-small-latest,0.65,0.4,0.65,0.55,0.7,,,0.59
+mistralai/mistral-medium-3.5-128b,0.75,0.65,0.75,0.65,0.7,,,0.7
+Overall,0.633,0.6,0.675,0.567,0.625,0.65,0.75,0.625

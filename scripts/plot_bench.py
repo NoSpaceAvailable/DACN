@@ -262,55 +262,96 @@ def print_tables(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
 
 
 # ── Charts ────────────────────────────────────────────────────────────────
+def _short_model(name: str) -> str:
+    return name.split("/")[-1].replace("@claude-cli", " (CLI)").replace("@codex-cli", " (codex)")
+
+
 def plot_charts(df: pd.DataFrame, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    plt.rcParams.update({"font.size": 11, "axes.titlesize": 13, "axes.labelsize": 11})
     cfgs = [c for c in CONFIG_ORDER if c in df["config"].unique()]
+    n_models = df["model"].nunique()
 
     # ── Chart 1: detection by model ────────────────────────────
-    fig, ax = plt.subplots(figsize=(8, 5))
-    rates = df.groupby("model")["detected"].mean().sort_values()
-    rates.plot(kind="barh", ax=ax, color="steelblue", edgecolor="black")
+    # 80% target = 0.8 × detection rate của 2 baseline thương mại
+    # (gpt-5-mini qua codex-cli, claude-sonnet-4-5 qua claude-cli), KHÔNG phải
+    # 80% detection rate tuyệt đối. Highlight 2 bar baseline bằng màu riêng.
+    fig, ax = plt.subplots(figsize=(11, max(4.5, 0.55 * n_models + 2)))
+    rates_raw = df.groupby("model")["detected"].mean().sort_values()
+    gpt_baseline = None
+    claude_baseline = None
+    colors = []
+    for m in rates_raw.index:
+        ml = m.lower()
+        if "@codex-cli" in m or "gpt-5" in ml:
+            gpt_baseline = rates_raw[m]
+            colors.append("#ff7f00")  # orange
+        elif "@claude-cli" in m or "claude-sonnet" in ml:
+            claude_baseline = rates_raw[m]
+            colors.append("#4daf4a")  # green
+        else:
+            colors.append("steelblue")
+    rates = rates_raw.copy()
+    rates.index = [_short_model(m) for m in rates.index]
+    ax.barh(range(len(rates)), rates.values, color=colors, edgecolor="black")
+    ax.set_yticks(range(len(rates)))
+    ax.set_yticklabels(rates.index)
+    for i, v in enumerate(rates.values):
+        ax.text(v + 0.012, i, f"{v:.0%}", va="center", fontsize=10)
     ax.set_title("Tỷ lệ phát hiện theo mô hình")
     ax.set_xlabel("Detection rate")
-    ax.set_xlim(0, 1.05)
-    ax.axvline(x=0.8, color="red", linestyle="--", label="Mục tiêu 80%")
-    ax.legend()
+    ax.set_xlim(0, 1.15)
+    if gpt_baseline is not None:
+        t_gpt = 0.8 * gpt_baseline
+        ax.axvline(x=t_gpt, color="#d62728", linestyle="--", linewidth=1.3,
+                   label=f"80% × gpt baseline ({t_gpt:.0%})")
+    if claude_baseline is not None:
+        t_claude = 0.8 * claude_baseline
+        ax.axvline(x=t_claude, color="#9467bd", linestyle=":", linewidth=1.5,
+                   label=f"80% × claude baseline ({t_claude:.0%})")
+    # legend entries for baseline bar colors
+    from matplotlib.patches import Patch
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(Patch(facecolor="#ff7f00", edgecolor="black", label="baseline gpt"))
+    handles.append(Patch(facecolor="#4daf4a", edgecolor="black", label="baseline claude"))
+    ax.legend(handles=handles, loc="lower right", framealpha=0.95, fontsize=9)
     plt.tight_layout()
     p = out_dir / "detection_by_model.png"
     plt.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
     print(f"  saved {p.name}")
 
     # ── Chart 2: detection by ablation config ──────────────────
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8, 5.2))
     rates = df.groupby("config")["detected"].mean().reindex(cfgs)
     colors = [CONFIG_COLORS[CONFIG_ORDER.index(c)] for c in cfgs]
-    rates.plot(kind="bar", ax=ax, color=colors, edgecolor="black")
+    bars = ax.bar(cfgs, rates.values, color=colors, edgecolor="black")
+    for b, v in zip(bars, rates.values):
+        ax.text(b.get_x() + b.get_width() / 2, v + 0.015, f"{v:.0%}",
+                ha="center", fontsize=10)
     ax.set_title("Tỷ lệ phát hiện theo cấu hình (ablation)")
     ax.set_ylabel("Detection rate")
-    ax.set_ylim(0, 1.05)
-    ax.axhline(y=0.8, color="red", linestyle="--", label="Mục tiêu 80%")
-    ax.legend()
-    ax.tick_params(axis="x", rotation=30)
+    ax.set_ylim(0, 1.15)
+    ax.tick_params(axis="x", rotation=20)
     plt.tight_layout()
     p = out_dir / "detection_by_config.png"
     plt.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
     print(f"  saved {p.name}")
 
     # ── Chart 3: detection by vuln class (style MAPTA Table 1) ─
-    fig, ax = plt.subplots(figsize=(10, 5))
     class_rates = (df.groupby("expected_vuln")["detected"].mean()
                    .sort_values(ascending=False))
     n_per_class = df.groupby("expected_vuln")["detected"].count()
-    labels = [f"{c} (n={n_per_class[c]})" for c in class_rates.index]
+    labels = [f"{c}\n(n={n_per_class[c]})" for c in class_rates.index]
+    fig, ax = plt.subplots(figsize=(max(10, 0.9 * len(labels) + 2), 6))
     bars = ax.bar(labels, class_rates.values, color="#4daf4a", edgecolor="black")
     ax.set_title("Tỷ lệ phát hiện theo lớp lỗ hổng (gộp mọi cấu hình)")
     ax.set_ylabel("Detection rate")
-    ax.set_ylim(0, 1.05)
-    ax.axhline(y=0.8, color="red", linestyle="--", label="Mục tiêu 80%")
-    ax.legend()
-    ax.tick_params(axis="x", rotation=30)
+    ax.set_ylim(0, 1.15)
+    ax.tick_params(axis="x", rotation=30, labelsize=9)
+    for label in ax.get_xticklabels():
+        label.set_ha("right")
     for b, v in zip(bars, class_rates.values):
-        ax.text(b.get_x() + b.get_width() / 2, v + 0.02, f"{v:.2f}",
+        ax.text(b.get_x() + b.get_width() / 2, v + 0.015, f"{v:.0%}",
                 ha="center", fontsize=9)
     plt.tight_layout()
     p = out_dir / "detection_by_vuln_class.png"
@@ -318,27 +359,41 @@ def plot_charts(df: pd.DataFrame, out_dir: Path) -> None:
     print(f"  saved {p.name}")
 
     # ── Chart 4: wall-time distribution (boxplot per config) ───
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8, 5.2))
     data = [df[df["config"] == c]["wall_s"].dropna().values for c in cfgs]
     bp = ax.boxplot(data, tick_labels=cfgs, patch_artist=True, showfliers=False)
     for patch, color in zip(bp["boxes"], [CONFIG_COLORS[CONFIG_ORDER.index(c)] for c in cfgs]):
         patch.set_facecolor(color)
     ax.set_title("Phân bố thời gian mỗi phiên theo cấu hình")
     ax.set_ylabel("Wall time (giây)")
-    ax.tick_params(axis="x", rotation=30)
+    ax.tick_params(axis="x", rotation=20)
+    ax.grid(True, axis="y", alpha=0.3)
     plt.tight_layout()
     p = out_dir / "wall_time_distribution.png"
     plt.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
     print(f"  saved {p.name}")
 
-    # ── Chart 5: failure taxonomy (pie, style VulnBot) ─────────
-    fig, ax = plt.subplots(figsize=(8, 8))
+    # ── Chart 5: failure taxonomy (pie + legend, style VulnBot) ─
     fail_counts = df["failure_class"].value_counts()
+    total = int(fail_counts.sum())
     palette = plt.cm.tab10.colors[:len(fail_counts)]
-    ax.pie(fail_counts.values, labels=fail_counts.index,
-           autopct="%1.1f%%", colors=palette, startangle=90,
-           wedgeprops={"edgecolor": "white"})
-    ax.set_title(f"Phân loại lỗi/thành công ({fail_counts.sum()} runs)")
+    fig, ax = plt.subplots(figsize=(10, 6.5))
+    pcts = fail_counts.values / total * 100
+    # autopct: hide labels <3% to avoid pile-up; render inside wedges only
+    def _fmt(p):
+        return f"{p:.1f}%" if p >= 3 else ""
+    wedges, _txts, autotxts = ax.pie(
+        fail_counts.values, labels=None, autopct=_fmt,
+        colors=palette, startangle=90, pctdistance=0.72,
+        wedgeprops={"edgecolor": "white", "linewidth": 1.5},
+    )
+    for t in autotxts:
+        t.set_color("white"); t.set_fontsize(11); t.set_fontweight("bold")
+    ax.set_title(f"Phân loại lỗi/thành công ({total} runs)", pad=14)
+    legend_labels = [f"{cls} — {n} ({p:.1f}%)" for cls, n, p in
+                     zip(fail_counts.index, fail_counts.values, pcts)]
+    ax.legend(wedges, legend_labels, loc="center left",
+              bbox_to_anchor=(1.02, 0.5), fontsize=10, frameon=False)
     plt.tight_layout()
     p = out_dir / "failure_taxonomy.png"
     plt.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
@@ -351,17 +406,23 @@ def plot_charts(df: pd.DataFrame, out_dir: Path) -> None:
         detection_rate=("detected", "mean"),
     )
     if len(by_model) >= 2 and by_model["mean_cost"].max() > 0:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.scatter(by_model["mean_cost"], by_model["detection_rate"],
-                   s=120, color="#e41a1c", edgecolor="black", zorder=3)
-        for model, row in by_model.iterrows():
-            ax.annotate(model, (row["mean_cost"], row["detection_rate"]),
-                        xytext=(5, 5), textcoords="offset points", fontsize=9)
+        fig, ax = plt.subplots(figsize=(11, 6))
+        # sort by detection rate desc → legend đọc dễ
+        sorted_models = by_model.sort_values("detection_rate", ascending=False)
+        palette = list(plt.cm.tab10.colors) + list(plt.cm.Set2.colors)
+        for i, (model, row) in enumerate(sorted_models.iterrows()):
+            ax.scatter(row["mean_cost"], row["detection_rate"],
+                       s=160, color=palette[i % len(palette)],
+                       edgecolor="black", linewidth=1.2, zorder=3,
+                       label=f"{_short_model(model)} ({row['detection_rate']:.0%})")
         ax.set_title("Cost vs Detection rate (Pareto frontier)")
         ax.set_xlabel("Chi phí trung bình mỗi phiên (USD)")
         ax.set_ylabel("Detection rate")
-        ax.set_ylim(0, 1.05)
+        ax.set_ylim(-0.05, 1.15)
+        ax.set_xlim(left=-0.002)
         ax.grid(True, alpha=0.3)
+        ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5),
+                  fontsize=9, frameon=False, title="Model (detection)")
         plt.tight_layout()
         p = out_dir / "cost_vs_detection.png"
         plt.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
@@ -372,7 +433,7 @@ def plot_charts(df: pd.DataFrame, out_dir: Path) -> None:
     # ── Chart 7: correlation heatmap (style MAPTA Sec 3.4) ─────
     numeric_cols = ["tool_calls", "wall_s", "steps", "budget_tokens", "detected"]
     corr = df_cost[numeric_cols].corr()
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=(7.5, 6.5))
     im = ax.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
     ax.set_xticks(range(len(numeric_cols)))
     ax.set_yticks(range(len(numeric_cols)))
@@ -383,9 +444,9 @@ def plot_charts(df: pd.DataFrame, out_dir: Path) -> None:
             ax.text(j, i, f"{corr.values[i, j]:.2f}",
                     ha="center", va="center",
                     color="white" if abs(corr.values[i, j]) > 0.5 else "black",
-                    fontsize=10)
-    plt.colorbar(im, ax=ax, shrink=0.7)
-    ax.set_title("Ma trận tương quan: nguồn lực vs kết quả")
+                    fontsize=11)
+    plt.colorbar(im, ax=ax, shrink=0.75)
+    ax.set_title("Ma trận tương quan: nguồn lực vs kết quả", pad=12)
     plt.tight_layout()
     p = out_dir / "correlation_matrix.png"
     plt.savefig(p, dpi=150, bbox_inches="tight"); plt.close()

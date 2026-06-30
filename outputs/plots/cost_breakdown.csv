@@ -1,0 +1,3 @@
+detected,n,median_tokens,median_cost_usd,median_wall_s,median_tool_calls
+detected,400,7400.0,0.016,144.47,16.0
+failed,240,6400.0,0.016,102.665,15.0
