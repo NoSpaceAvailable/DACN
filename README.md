@@ -1,159 +1,117 @@
-# VAPT Orchestrator Safe Lab
+# Nghiên cứu cơ chế điều phối và quản lý đa tác tử trong kiểm thử xâm nhập ứng dụng web
 
-An offensive research scaffold for a **multi-agent web security orchestration system**.
+*A study on multi-agent orchestration and management for web application penetration testing*
 
-This repository is designed for an academic project on **multi-agent orchestration and management for web application penetration testing**. It mirrors the high-level role separation used in MAPTA-style systems—**Coordinator / Sandbox / Validation**—but keeps execution in a **local offline lab** using recorded fixtures and source snapshots instead of probing real targets.
+**Đồ án chuyên ngành — NT114.Q21.ANTN — Học kỳ 2, Năm học 2025–2026**
+Trường Đại học Công nghệ Thông tin, ĐHQG-HCM — Khoa Mạng máy tính và Truyền thông
 
-## What this project includes
+| Sinh viên thực hiện | MSSV |
+|---|---|
+| Lê Quốc Cường | 23520197 |
+| Ngô Phúc Dương | 23520350 |
 
-- Multi-agent pipeline:
-  - Intake Agent
-  - Recon Agent
-  - Signature/RAG Agent
-  - Analyst Agent
-  - Exploit Candidate Agent
-  - Independent Validation Agent
-  - Report Agent
-- Shared memory with:
-  - evidence store
-  - task graph
-  - artifact log
-  - budget ledger
-- Compressed RAG over local JSONL knowledge documents
-- Model routing scaffold for per-skill model assignment
-- Offline benchmark harness for comparing profile sets such as `gamma4_4b`, `gamma4_8b`, `gamma4_27b`
-- Sample challenge fixtures for:
-  - IDOR/BOLA-style authorization flaw
-  - SSRF-style server-side fetch misuse
-  - SQLi-style unsafe query construction
+**Giảng viên hướng dẫn:** ThS. Nghi Hoàng Khoa
 
-## What this project does **not** do
+---
 
-- It does not probe public IPs or public domains.
-- It does not ship real exploitation tooling.
-- It does not perform destructive actions.
-- It does not include a weaponized exploit engine.
+## 1. Giới thiệu
 
-The default runner is intentionally restricted to **local fixture inputs** and **source snapshots** for safe research and benchmarking.
+Đề tài xây dựng một **hệ thống đa tác tử (multi-agent) dùng mô hình ngôn ngữ lớn (LLM)** để tự động hoá kiểm thử xâm nhập ứng dụng web. Trung tâm hệ thống là một **Bộ điều phối (Dispatcher)** điều khiển bằng LLM theo phong cách tool-use (giống Claude Code / Codex CLI), phối hợp các tác tử chuyên biệt và các công cụ qua một **bộ nhớ chia sẻ (Blackboard)**.
 
-## Architecture
+Hệ thống đề xuất **ba đóng góp nguyên gốc** nhằm khắc phục điểm yếu chung của PentestGPT, Red-MIRROR, MAPTA:
 
-```text
-Input (fixture or local source)
- -> Intake Agent
- -> Recon Agent
- -> Signature/RAG Agent
- -> Analyst Agent
- -> Exploit Candidate Agent
- -> Validation Agent
- -> Report Agent
+- **C1 — Can thiệp giữa lúc suy luận (mid-thinking intervention):** giám sát luồng token theo thời gian thực và cắt sớm khi LLM đi lệch hướng / vượt phạm vi / sắp lặp, thay vì chờ sinh xong câu trả lời.
+- **C2 — Bộ chống lặp (anti-loop guard):** phát hiện lặp dựa trên chữ ký cấu trúc của lời gọi công cụ và buộc đổi hướng tấn công (pivot), không phụ thuộc khả năng phản tư của LLM.
+- **C3 — Truy xuất tri thức bằng đồ thị (KG-RAG):** trả về các bộ ba có cấu trúc thay cho đoạn văn thô, tiết kiệm token đáng kể khi hỏi về họ tấn công / framework / sink.
+
+## 2. Kiến trúc bốn tầng
+
+```
+Input: fixture (manifest + transcript HTTP + source + oracle)  hoặc  instance Docker sống
+  └── Tầng Điều phối : Dispatcher (LLM) + Blackboard + Model Selector
+        └── Tầng Tác tử : Recon / Signature / Analyst / Exploit / Validator / Report
+              └── Tầng Công cụ : read_source, record_finding, submit_flag,
+                                  query_cve / query_ghsa / query_nuclei (tra CVE trực tuyến),
+                                  nmap / curl / http_probe, sandbox Docker
+                    └── Tầng Tri thức : query_kg (đồ thị) + query_rag (văn bản nén)
+Output: report.md, run_summary.json (detected / solved), memory.json
 ```
 
-The orchestration layer keeps shared state in a structured memory object:
+**Tầng tri thức** được xây dựng tự động: chưng cất 172 trang **HackTricks** thành 741 bản ghi có cấu trúc → đồ thị ~3.000 node / 6.500 cạnh (23 lớp lỗ hổng), bổ sung tra cứu **NVD / GitHub Advisory / Nuclei / Exploit-DB** trực tuyến cho tri thức theo phiên bản thành phần.
 
-- `task_graph`: status of agent tasks
-- `evidence`: observations and compressed evidence cards
-- `artifacts`: candidate PoCs and report files
-- `budget`: tool calls, simulated tokens, elapsed time, simulated cost
+Toàn bộ tầng LLM được trừu tượng hoá — đổi nhà cung cấp (Ollama, OpenAI, Anthropic, Mistral, Google Gemini, DeepSeek, Groq…) chỉ qua biến môi trường, không sửa mã.
 
-## Install
+## 3. Hai chế độ chạy
+
+- **Detection (phân tích tĩnh):** đọc mã nguồn/transcript, phát hiện và phân loại lỗ hổng.
+- **Live exploit (`--live`):** tự khởi chạy container thử thách qua Docker, khai thác instance sống và **lấy flag** (metric solve-rate, so sánh trực tiếp với benchmark).
+
+## 4. Cài đặt
 
 ```bash
-cd vapt_orchestrator_safe
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
+pip install -r requirements.txt
 ```
 
-## Quick start
-
-Run a single local fixture:
+## 5. Chạy thử
 
 ```bash
-vapt-safe run --fixture data/fixtures/challenge_idor_01 --profile-set mixed_default
+# Phát hiện lỗ hổng trên một fixture (Mistral đọc key từ .env)
+python scripts/bench_api_local.py --provider mistral --model mistral-medium-latest \
+    --fixtures web-019 --configs all --require-source-read
+
+# Chế độ khai thác trực tiếp (boot Docker → khai thác → lấy flag)
+python scripts/bench_api_local.py --provider mistral --model mistral-medium-latest \
+    --fixtures live_no_pass_needed --configs all --live
+
+# Kiểm tra quota các provider
+python scripts/check_quota.py
+
+# Thống kê detection rate + khoảng tin cậy Wilson 95% + z-test
+python scripts/bench_stats.py
+
+# Bọc challenge NYU CTF Bench thành fixture live-exploit
+python scripts/wrap_nyuctf_live.py --limit 10
 ```
 
-Run all fixtures with all configured profile sets:
+Cấu hình khoá API đặt trong `.env` (xem `.env.example`) — file này **không** được commit.
 
-```bash
-vapt-safe benchmark --fixtures-dir data/fixtures --profiles configs/model_profiles.json --out outputs/benchmark_results.json
+## 6. Kết quả tóm tắt
+
+Trên 20 fixture web (nguồn NYU CTF Bench / CSAW Quals) × 8 mô hình × 5 cấu hình ablation:
+
+- Cấu hình dispatcher tốt nhất đạt **~78% detection rate**, **cạnh tranh được** với hai baseline CLI mã đóng: `gpt-5-mini` qua Codex CLI (75%) và `claude-sonnet-4-5` qua Claude CLI (65%).
+- Chênh lệch **không có ý nghĩa thống kê** (kiểm định z hai tỉ lệ, khoảng tin cậy Wilson chồng lấn) — xem mục *Threats to Validity* trong báo cáo.
+- `gemma-4-31b-it` miễn phí (Google AI Studio) đạt 75% ngang `gpt-5-mini` khi làm dispatcher — cho thấy tiềm năng backbone nhỏ/rẻ.
+- Phát hiện đúng các lỗ hổng khó: **HTTP Request Smuggling** (nginx CVE-2019-20372), **SSTI**.
+
+## 7. An toàn và phạm vi
+
+- Hệ thống chạy trong **phòng thí nghiệm cục bộ**; live-exploit chỉ chạy container bind loopback, không mở egress.
+- **Không** quét IP/tên miền công khai, **không** phát tán mã khai thác vũ khí hoá.
+- Công cụ thực thi được cô lập trong Docker sandbox (`--network=none`, read-only, giới hạn CPU/RAM).
+
+## 8. Cấu trúc mã nguồn
+
 ```
-
-List profile sets:
-
-```bash
-vapt-safe profiles --profiles configs/model_profiles.json
-```
-
-## Example output
-
-Each run produces an output directory under `outputs/`:
-
-- `memory.json`
-- `report.md`
-- `report.json`
-- `run_summary.json`
-
-## Model routing
-
-Model routing is implemented as a **profile abstraction**, not a vendor-specific dependency. A profile defines approximate per-skill strengths and simulated cost. You can use it to compare:
-
-- all-small profile sets
-- mixed routing by skill
-- all-large profile sets
-
-The sample config includes:
-
-- `all_4b`
-- `all_8b`
-- `all_27b`
-- `mixed_default`
-
-## Extending the scaffold
-
-Safe extension points:
-
-- add more offline fixtures
-- add more KB documents for RAG
-- add more heuristics to recon/signature/validation
-- add more model profile sets
-- add visualizations for benchmark output
-
-## Project layout
-
-```text
-configs/
-  model_profiles.json
-  system_skills.json
-data/
-  kb/
-  fixtures/
 src/vapt_orchestrator_safe/
-  agents/
-  engine/
-  llm/
-  memory/
-  sandbox/
-  utils/
-tests/
+  engine/     dispatcher, dispatcher_runner, watchdogs (C1), anti_loop (C2), eval_case, ablation
+  agents/     intake, recon, signature, analyst, exploit, validator, report
+  tools/      analysis_tools (read_source/record_finding), flag_tools (submit_flag),
+              kg_tools (C3), cve_tool/ghsa_tool/nuclei_tool/exploitdb_tool, security/
+  kg/         knowledge_graph, in_memory, neo4j_kg        (C3)
+  dataset/    cve_entry, seed, distiller                  (chưng cất tri thức)
+  sandbox/    live_lab (boot challenge Docker), docker_sandbox
+  llm/        backend_factory (đa nhà cung cấp), text_tool_wrapper
+scripts/      bench_api_local, bench_stats, wrap_nyuctf_live, distill_hacktricks, check_quota, ...
+data/         fixtures/ (thử thách), corpus/ (hacktricks.jsonl), kb/
+tests/        (pytest)
 ```
 
-## Research notes
+## 9. Kiểm thử
 
-This scaffold is aligned with the literature direction that separates **orchestration**, **tool execution**, and **proof-of-concept validation** for improved reliability and lower false positives. The uploaded MAPTA paper describes a Coordinator/Sandbox/Validation pattern, per-job isolation, and budget-aware orchestration, which motivated the structure used here.
-
-## Suggested thesis experiments
-
-1. Single-agent vs multi-agent
-2. No-RAG vs compressed-RAG
-3. No-validator vs independent-validator
-4. Shared memory off vs on
-5. `all_4b` vs `all_8b` vs `all_27b` vs mixed routing
-6. Cost-aware early stopping on/off
-
-## Limitations
-
-- Benchmark results are only meaningful for the included offline fixtures unless you add your own lab data.
-- The included model comparison is a **research scaffold** for orchestration experiments, not a claim about real-world model rankings.
-- The PoC validator only checks against local fixture ground truth.
-
+```bash
+python -m pytest -q
+```
